@@ -1,33 +1,22 @@
 package vss
 
-import "log"
+import (
+	"github.com/mitchellh/cli"
+	"github.com/vssio/go-vss/internal/command"
+)
 
-type BuildCommand struct{}
+// Commands is a map of available commands.
+var Commands map[string]cli.CommandFactory
 
-func (c *BuildCommand) Help() string {
-	return "Help text for foo"
-}
+// initCommands initializes the Commands map.
+func initCommands() {
+	Commands = map[string]cli.CommandFactory{
+		"build": func() (cli.Command, error) {
+			return &command.BuildCommand{}, nil
 
-func (c *BuildCommand) Run(args []string) int {
-	log.Println("foo!")
-	return 0
-}
-
-func (c *BuildCommand) Synopsis() string {
-	return "Prints foo"
-}
-
-type ServeCommand struct{}
-
-func (c *ServeCommand) Help() string {
-	return "Help text for bar"
-}
-
-func (c *ServeCommand) Run(args []string) int {
-	log.Println("bar!")
-	return 0
-}
-
-func (c *ServeCommand) Synopsis() string {
-	return "Prints bar"
+		},
+		"serve": func() (cli.Command, error) {
+			return &command.ServeCommand{}, nil
+		},
+	}
 }

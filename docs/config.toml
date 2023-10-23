@@ -1,0 +1,6 @@
+title = "vss docs"
+description = "vss document site"
+base_url = 'https://vssio.github.io/vss-go/'
+
+[build]
+ignore_files = ["ignore.md", "README.md"]
