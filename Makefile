@@ -15,7 +15,7 @@ build:
 
 .PHONY: show-version
 show-version: $(GOBIN)/gobump
-	@gobump show -r .
+	@gobump show -r cmd/vss
 
 $(GOBIN)/gobump:
 	@go install github.com/x-motemen/gobump/cmd/gobump@latest
