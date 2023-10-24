@@ -10,6 +10,9 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     steps:
+    # ワークフロー可視化用
+    - uses: Kesin11/actions-timeline@v1
+
     - name: Checkout code
       uses: actions/checkout@v4
 
