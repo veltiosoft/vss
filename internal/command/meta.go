@@ -1,12 +1,10 @@
 package command
 
-import (
-	"github.com/vssio/go-vss/internal/command/cliconfig"
-)
+import "github.com/vssio/go-vss/internal/config"
 
 // Meta contains the common fields required by all commands.
 type Meta struct {
-	Config *cliconfig.Config
+	Config *config.Config
 }
 
 // SetupConfig initializes the Config field of the Meta struct.
@@ -15,10 +13,13 @@ type Meta struct {
 func (m *Meta) SetupConfig() error {
 	if m.Config == nil {
 		var err error
-		m.Config, err = cliconfig.LoadConfig()
+		m.Config, err = config.LoadConfig()
 		if err != nil {
 			return err
 		}
+		m.Config.Dist = "dist"
+		m.Config.Static = "static"
+		m.Config.Layouts = "layouts"
 	}
 	return nil
 }

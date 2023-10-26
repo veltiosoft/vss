@@ -1,4 +1,4 @@
-BIN := vss
+BIN := bin/vss
 VERSION := $$(make -s show-version)
 CURRENT_REVISION := $(shell git rev-parse --short HEAD)
 BUILD_LDFLAGS := "-s -w -X main.revision=$(CURRENT_REVISION)"
@@ -12,6 +12,11 @@ tag:
 .PHONY: build
 build:
 	go build -o $(BIN) -ldflags $(BUILD_LDFLAGS) -trimpath cmd/vss/main.go
+
+.PHONY: docs
+docs: build
+	cp $(BIN) docs
+	cd docs && ./vss build
 
 .PHONY: show-version
 show-version: $(GOBIN)/gobump
@@ -29,19 +34,16 @@ $(GOBIN)/goxz:
 
 .PHONY: test
 test: build
-	go test -v ./...
+	go test -shuffle=on -v ./...
+
+.PHONY: bench 
+bench:
+	go test -v -bench=. -benchmem ./...
 
 .PHONY: clean
 clean:
 	rm -rf $(BIN) goxz
 	go clean
-
-.PHONY: upload
-upload: $(GOBIN)/ghr
-	ghr "v$(VERSION)" goxz
-
-$(GOBIN)/ghr:
-	go install github.com/tcnksm/ghr@latest
 
 .PHONY: lint
 lint: $(GOBIN)/staticcheck

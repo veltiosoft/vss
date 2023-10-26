@@ -1,3 +1,8 @@
 main
 bin
 goxz
+dist
+
+# draw.io
+*.drawio.bkp
+*.drawio.dtmp
