@@ -35,7 +35,7 @@ $(GOBIN)/gobump:
 
 .PHONY: cross
 cross: $(GOBIN)/goxz
-	goxz -n $(BIN) -pv=v$(VERSION) -build-ldflags=$(BUILD_LDFLAGS) -trimpath cmd/vss/main.go
+	goxz -n $(BIN) -build-ldflags=$(BUILD_LDFLAGS) -trimpath cmd/vss/main.go
 
 $(GOBIN)/goxz:
 	go install github.com/Songmu/goxz/cmd/goxz@latest

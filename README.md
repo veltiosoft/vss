@@ -1,11 +1,12 @@
 # go vss
 
-## TODO
+## Documentation
 
-- [ ] データ構造を整理する
-- [ ] 処理フローを整理する
+Read: https://docs-vss.pages.dev/
 
-## データ構造
+## LICENSE
+
+MIT
 
 ## References
 
