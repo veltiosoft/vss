@@ -12,7 +12,7 @@ A static site generator.
 - Local development server (Rebuilds when files are modified)
     - But now, page reloading must be done manually
 
-## Pages
+## Contents
 
 - [about page](./about)
 - post
