@@ -7,6 +7,9 @@ GOBIN ?= $(shell go env GOPATH)/bin
 .PHONY: tag
 tag:
 	git tag "v${VERSION}"
+
+.PHONY: release
+release: tag
 	git push origin "v${VERSION}"
 
 .PHONY: build
@@ -25,7 +28,7 @@ serve-docs: build
 
 .PHONY: show-version
 show-version: $(GOBIN)/gobump
-	@gobump show -r cmd/vss
+	@gobump show -r .
 
 $(GOBIN)/gobump:
 	@go install github.com/x-motemen/gobump/cmd/gobump@latest
