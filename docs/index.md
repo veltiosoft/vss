@@ -2,6 +2,8 @@
 
 A static site generator.
 
+![vss-logo](./image.gif)
+
 - [GitHub](https://github.com/vssio/go-vss)
 
 ## Features
