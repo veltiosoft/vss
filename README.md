@@ -4,6 +4,39 @@
 
 Read: https://docs-vss.pages.dev/
 
+## Development
+
+### Requirements
+
+- [Go](https://go.dev)
+
+### Commands
+
+test
+```bash
+make test
+```
+
+build
+```bash
+make build
+```
+
+run server for docs
+```bash
+make serve-docs
+```
+
+fmt
+```bash
+make fmt
+```
+
+lint
+```bash
+make lint
+```
+
 ## LICENSE
 
 MIT
