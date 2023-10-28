@@ -18,6 +18,11 @@ docs: build
 	cp $(BIN) docs
 	cd docs && ./vss build
 
+.PHONY: serve-docs
+serve-docs: build
+	cp $(BIN) docs
+	cd docs && ./vss serve
+
 .PHONY: show-version
 show-version: $(GOBIN)/gobump
 	@gobump show -r cmd/vss

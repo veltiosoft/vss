@@ -5,6 +5,7 @@ go 1.21.0
 require (
 	github.com/bradhe/stopwatch v0.0.0-20190618212248-a58cccc508ea
 	github.com/cbroglie/mustache v1.4.0
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/mitchellh/cli v1.1.5
 	github.com/pelletier/go-toml/v2 v2.1.0
 	github.com/yuin/goldmark v1.5.6
@@ -30,5 +31,5 @@ require (
 	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/spf13/cast v1.5.1 // indirect
 	golang.org/x/crypto v0.13.0 // indirect
-	golang.org/x/sys v0.12.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
 )

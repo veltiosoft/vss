@@ -2,6 +2,7 @@ main
 bin
 goxz
 dist
+vss
 
 # draw.io
 *.drawio.bkp
