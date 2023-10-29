@@ -2,7 +2,7 @@
 
 ## Documentation
 
-Read: https://docs-vss.pages.dev/
+Read: https://vss-doc.veltiosoft.dev/
 
 ## Development
 
