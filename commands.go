@@ -11,6 +11,7 @@ func initCommands(metaPtr *command.Meta) map[string]cli.CommandFactory {
 		metaPtr = new(command.Meta)
 	}
 	meta := *metaPtr
+	meta.Version = version
 
 	all := map[string]cli.CommandFactory{
 		"build": func() (cli.Command, error) {
@@ -21,6 +22,11 @@ func initCommands(metaPtr *command.Meta) map[string]cli.CommandFactory {
 		},
 		"serve": func() (cli.Command, error) {
 			return &command.ServeCommand{
+				Meta: meta,
+			}, nil
+		},
+		"new": func() (cli.Command, error) {
+			return &command.NewCommand{
 				Meta: meta,
 			}, nil
 		},

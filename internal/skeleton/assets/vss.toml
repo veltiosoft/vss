@@ -1,0 +1,6 @@
+title = "vss skeleton site"
+description = "vss skeleton site"
+base_url = "https://docs-vss.pages.dev/"
+
+[build]
+ignore_files = ["README.md"]

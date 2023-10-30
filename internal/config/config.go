@@ -62,7 +62,7 @@ func configFile() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "config.toml"), nil
+	return filepath.Join(dir, "vss.toml"), nil
 }
 
 // cliConfigFileOverride returns the value of VSS_CONFIG_FILE if set.

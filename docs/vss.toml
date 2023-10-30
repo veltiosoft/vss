@@ -1,0 +1,6 @@
+title = "vss docs"
+description = "vss document site"
+base_url = "https://vss-doc.veltiosoft.dev/"
+
+[build]
+ignore_files = ["README.md"]

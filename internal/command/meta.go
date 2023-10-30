@@ -1,10 +1,13 @@
 package command
 
-import "github.com/vssio/go-vss/internal/config"
+import (
+	"github.com/vssio/go-vss/internal/config"
+)
 
 // Meta contains the common fields required by all commands.
 type Meta struct {
-	Config *config.Config
+	Config  *config.Config
+	Version string
 }
 
 // SetupConfig initializes the Config field of the Meta struct.

@@ -9,6 +9,10 @@ import (
 
 const version = "0.0.1"
 
+func Version() string {
+	return version
+}
+
 func Run(args []string) int {
 	metaPtr := new(command.Meta)
 	c := &cli.CLI{

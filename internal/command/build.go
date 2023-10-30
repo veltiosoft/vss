@@ -16,7 +16,7 @@ func (c *BuildCommand) Help() string {
 }
 
 func (c *BuildCommand) Synopsis() string {
-	return "Build site"
+	return "Build your vss site"
 }
 
 func (c *BuildCommand) Run(args []string) int {
