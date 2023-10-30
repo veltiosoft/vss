@@ -20,7 +20,7 @@ For Mac & Linux
 
 latest version
 ```sh
-curl -sfL https://raw.githubusercontent.com/vssio/go-vss/main/scripts/install.sh
+curl -sfL https://raw.githubusercontent.com/vssio/go-vss/main/scripts/install.sh | sh
 ```
 
 specific version
