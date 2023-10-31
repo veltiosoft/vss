@@ -2,7 +2,7 @@
 
 ## Documentation
 
-Read: https://vss-doc.veltiosoft.dev/
+Read: https://vss.veltiosoft.dev/
 
 ## Development
 
