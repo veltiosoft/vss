@@ -6,8 +6,9 @@ import (
 
 // Meta contains the common fields required by all commands.
 type Meta struct {
-	Config  *config.Config
-	Version string
+	Config   *config.Config
+	Version  string
+	Revision string
 }
 
 // SetupConfig initializes the Config field of the Meta struct.

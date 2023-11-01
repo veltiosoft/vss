@@ -12,6 +12,7 @@ func initCommands(metaPtr *command.Meta) map[string]cli.CommandFactory {
 	}
 	meta := *metaPtr
 	meta.Version = version
+	meta.Revision = revision
 
 	all := map[string]cli.CommandFactory{
 		"build": func() (cli.Command, error) {
@@ -32,6 +33,11 @@ func initCommands(metaPtr *command.Meta) map[string]cli.CommandFactory {
 		},
 		"self update": func() (cli.Command, error) {
 			return &command.SelfUpdateCommand{
+				Meta: meta,
+			}, nil
+		},
+		"self version": func() (cli.Command, error) {
+			return &command.SelfVersionCommand{
 				Meta: meta,
 			}, nil
 		},
