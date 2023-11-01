@@ -26,6 +26,11 @@ serve-docs: build
 	cp $(BIN) docs
 	cd docs && ./vss serve
 
+.PHONY: selfupdate
+selfupdate: build
+	cp $(BIN) bin
+	cd bin && ./vss self update
+
 .PHONY: show-version
 show-version: $(GOBIN)/gobump
 	@gobump show -r .

@@ -30,6 +30,11 @@ func initCommands(metaPtr *command.Meta) map[string]cli.CommandFactory {
 				Meta: meta,
 			}, nil
 		},
+		"self update": func() (cli.Command, error) {
+			return &command.SelfUpdateCommand{
+				Meta: meta,
+			}, nil
+		},
 	}
 	return all
 }

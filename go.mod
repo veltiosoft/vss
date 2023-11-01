@@ -6,12 +6,14 @@ require (
 	github.com/bradhe/stopwatch v0.0.0-20190618212248-a58cccc508ea
 	github.com/cbroglie/mustache v1.4.0
 	github.com/fsnotify/fsnotify v1.7.0
+	github.com/minio/selfupdate v0.6.0
 	github.com/mitchellh/cli v1.1.5
 	github.com/pelletier/go-toml/v2 v2.1.0
 	github.com/yuin/goldmark v1.5.6
 )
 
 require (
+	aead.dev/minisign v0.2.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
@@ -30,6 +32,6 @@ require (
 	github.com/posener/complete v1.2.3 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/spf13/cast v1.5.1 // indirect
-	golang.org/x/crypto v0.13.0 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 )
