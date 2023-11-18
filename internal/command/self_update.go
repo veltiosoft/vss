@@ -83,7 +83,7 @@ func (c *SelfUpdateCommand) Run(args []string) int {
 
 	// vss --version でバージョンが表示されるようにする
 	// 出力は標準出力になる
-	exe, err := os.Executable()
+	exe, err := filepath.Abs(os.Args[0])
 	if err != nil {
 		log.Printf("[ERROR] %s", err)
 		return 1
