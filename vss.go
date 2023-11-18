@@ -7,7 +7,7 @@ import (
 	"github.com/vssio/go-vss/internal/command"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 var revision = "HEAD"
 
