@@ -2,6 +2,7 @@ package build
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"log"
 	"os"
@@ -76,7 +77,10 @@ func (b *Builder) Run() error {
 			return err
 		}
 		defer distFile.Close()
-		template := b.lookUpTemplate(htmlPath)
+		template, err := b.lookUpTemplate(htmlPath)
+		if err != nil {
+			return err
+		}
 		template.FRender(distFile, renderContext)
 	}
 	return nil
@@ -96,23 +100,23 @@ func (b *Builder) initTemplateMap(templateFiles []string) error {
 }
 
 // lookUpTemplate returns the path (file path) of the template path.
-func (b *Builder) lookUpTemplate(path string) *mustache.Template {
+func (b *Builder) lookUpTemplate(path string) (*mustache.Template, error) {
 	dir := filepath.Dir(path)
 	layoutsDir := b.config.Layouts
 
 	t, ok := b.templateMap[filepath.Join(layoutsDir, path)]
 	if ok {
-		return t
+		return t, nil
 	}
 	t, ok = b.templateMap[filepath.Join(layoutsDir, dir, "default.html")]
 	if ok {
-		return t
+		return t, nil
 	}
 	t, ok = b.templateMap[filepath.Join(layoutsDir, "default.html")]
 	if ok {
-		return t
+		return t, nil
 	}
-	return nil
+	return nil, errors.New("template not found")
 }
 
 func replaceExt(filePath, from, to string) string {

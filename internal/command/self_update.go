@@ -2,7 +2,10 @@ package command
 
 import (
 	"archive/tar"
+	"archive/zip"
+	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,10 +15,14 @@ import (
 	"runtime"
 	"strings"
 
+	bufra "github.com/avvmoto/buf-readerat"
 	"github.com/minio/selfupdate"
 )
 
-const latestReleaseUrl = "https://github.com/vssio/go-vss/releases/latest/download"
+const (
+	latestReleaseUrl = "https://github.com/vssio/go-vss/releases/latest/download"
+	binaryName       = "vss"
+)
 
 type SelfUpdateCommand struct {
 	Meta
@@ -31,25 +38,55 @@ func (c *SelfUpdateCommand) Synopsis() string {
 
 func (c *SelfUpdateCommand) Run(args []string) int {
 	fmt.Println("Updating to latest ...")
+
 	var ext string
 	if runtime.GOOS == "linux" {
 		ext = "tar.gz"
 	} else {
 		ext = "zip"
 	}
+
 	target := fmt.Sprintf("%s/vss_%s_%s.%s", latestReleaseUrl, runtime.GOOS, runtime.GOARCH, ext)
-	err := downloadAndExtract(target)
+	resp, err := http.Get(target)
 	if err != nil {
 		log.Printf("[ERROR] %s", err)
 		return 1
 	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[ERROR] %s", resp.Status)
+		return 1
+	}
+
+	var r io.Reader
+	if ext == "tar.gz" {
+		r, err = extractTgz(resp)
+		if err != nil {
+			log.Printf("[ERROR] %s", err)
+			return 1
+		}
+	} else {
+		r, err = extractZip(resp)
+		if err != nil {
+			log.Printf("[ERROR] %s", err)
+			return 1
+		}
+	}
+
+	err = updateBinary(r)
+	if err != nil {
+		log.Printf("[ERROR] %s", err)
+		return 1
+	}
+
 	// vss --version でバージョンが表示されるようにする
 	// 出力は標準出力になる
-	cmd := exec.Command("vss", "self", "version")
+	cmd := exec.Command(binaryName, "self", "version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// when unsupported self version command
-		cmd := exec.Command("vss", "--version")
+		cmd := exec.Command(binaryName, "--version")
 		output, err = cmd.CombinedOutput()
 		if err != nil {
 			log.Printf("[ERROR] %s", err)
@@ -68,18 +105,12 @@ func updateBinary(target io.Reader) error {
 	return nil
 }
 
-func downloadAndExtract(url string) error {
-	// Get the data
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
+// extractTgz extracts the binary from the tar.gz archive
+func extractTgz(resp *http.Response) (io.Reader, error) {
 	// Create a new gzip reader
 	gr, err := gzip.NewReader(resp.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer gr.Close()
 
@@ -93,7 +124,7 @@ func downloadAndExtract(url string) error {
 			break // End of archive
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		// Open the output file
@@ -101,13 +132,33 @@ func downloadAndExtract(url string) error {
 			continue
 		}
 		filename := filepath.Join(strings.Split(header.Name, "/")[1:]...)
-		if filename == "vss" {
-			updateBinary(tr)
-			break // end of update binary
+		if filename == binaryName {
+			return tr, nil
 		} else {
 			continue
 		}
 	}
 
-	return nil
+	return nil, errors.New("vss binary not found")
+}
+
+// extractZip extracts the binary from the zip archive
+func extractZip(resp *http.Response) (io.Reader, error) {
+	var buf bytes.Buffer
+	_, err := io.Copy(&buf, resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.ContentLength != int64(buf.Len()) {
+		return nil, errors.New("content length mismatch")
+	}
+
+	bufr := bufra.NewBufReaderAt(bytes.NewReader(buf.Bytes()), buf.Len())
+	r, err := zip.NewReader(bufr, int64(buf.Len()))
+	for _, file := range r.File {
+		if file.Name == binaryName {
+			return file.Open()
+		}
+	}
+	return nil, errors.New("vss binary not found")
 }
