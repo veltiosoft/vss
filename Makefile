@@ -16,15 +16,15 @@ release: tag
 build:
 	go build -o $(BIN) -ldflags $(BUILD_LDFLAGS) -trimpath cmd/vss/main.go
 
-.PHONY: docs
-docs: build
-	cp $(BIN) docs
-	cd docs && ./vss build
+.PHONY: site
+site: build
+	cp $(BIN) site
+	cd site && ./vss build
 
-.PHONY: serve-docs
-serve-docs: build
-	cp $(BIN) docs
-	cd docs && ./vss serve
+.PHONY: serve-site
+serve-site: build
+	cp $(BIN) site
+	cd site && ./vss serve
 
 .PHONY: selfupdate
 selfupdate: build

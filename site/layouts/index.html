@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ja" data-bs-theme="dark">
+<head>
+    <meta name="generator" content="vss {{version}}" />
+    <meta charset="utf-8">
+    <title>{{title}}</title>
+    <base href="{{base_url}}">
+    <meta name="description" content="{{description}}" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prism-themes@1.9.0/themes/prism-atom-dark.min.css">
+</head>
+
+<body>
+	<header class="navbar navbar-expand-lg bd-navbar sticky-top bg-body-tertiary">
+		<nav class="container-lg bd-gutter flex-wrap flex-lg-nowrap">
+			<a class="navbar-brand" href="/"><img src="/logo.png" alt="logo" width="30" height="30" class="d-inline-block align-text-top"></a>
+			<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      			<span class="navbar-toggler-icon"></span>
+    		</button>
+			<div class="collapse navbar-collapse" id="navbarSupportedContent">
+				<ul class="navbar-nav me-auto mb-2 mb-lg-0">
+					<li class="nav-item">
+        				<a href="/docs" class="nav-link" aria-current="page" >Document</a>
+        			</li>
+					<li class="nav-item">
+        				<a href="/about" class="nav-link" aria-current="page" >About</a>
+        			</li>
+					<li class="nav-item">
+        				<a href="/posts" class="nav-link" aria-current="page" >Post</a>
+        			</li>
+					<li class="nav-item">
+        				<a href="/examples" class="nav-link" aria-current="page" >Example</a>
+        			</li>
+				</ul>
+			</div>
+		</nav>
+	</header>
+	<div class="container-lg">
+    	{{{contents}}}
+	</div>
+
+    <!-- Scripts -->
+	<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js" integrity="sha384-fbbOQedDUMZZ5KreZpsbe1LCZPVmfTnH7ois6mU1QK+m14rQ1l2bGBq41eYeM/fS" crossorigin="anonymous"></script>
+</body>
+</html>
