@@ -1,3 +1,3 @@
 # Posts
 
-- [first](posts/first)
+- [first](first)
