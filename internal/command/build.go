@@ -5,6 +5,7 @@ import (
 
 	"github.com/bradhe/stopwatch"
 	"github.com/vssio/go-vss/internal/build"
+	"github.com/vssio/go-vss/internal/config"
 )
 
 type BuildCommand struct {
@@ -21,22 +22,22 @@ func (c *BuildCommand) Synopsis() string {
 
 func (c *BuildCommand) Run(args []string) int {
 	log.Println("[INFO] build started")
-	err := c.Meta.SetupConfig()
-	if err != nil {
-		log.Printf("[ERROR] loading config: %s", err)
-		return 1
-	}
-
 	// init stop watch
 	sw := stopwatch.Start()
 
-	// TODO: build site
-	builder := build.NewBuilder(c.Meta.Config)
+	config, err := config.LoadConfig()
+	if err != nil {
+		log.Printf("[ERROR] %s", err)
+		return 1
+	}
+
+	builder := build.NewBuilder(config)
 	err = builder.Run()
 	if err != nil {
 		log.Printf("[ERROR] %s", err)
 		return 1
 	}
+
 	sw.Stop()
 	log.Printf("[INFO] build finished in %v", sw.Milliseconds())
 	return 0

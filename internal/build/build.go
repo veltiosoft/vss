@@ -37,6 +37,16 @@ func NewBuilder(config *config.Config) *Builder {
 	}
 }
 
+// ReloadConfig reloads the config file.
+func (b *Builder) ReloadConfig() error {
+	c, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
+	b.config = c
+	return nil
+}
+
 func (b *Builder) Run() error {
 	if err := createDistDir(b.config.Dist); err != nil {
 		return err

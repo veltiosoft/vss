@@ -40,7 +40,15 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	return loadConfigFile(path)
+	c, err := loadConfigFile(path)
+	if err != nil {
+		return nil, err
+	}
+	// set default values
+	c.Dist = "dist"
+	c.Static = "static"
+	c.Layouts = "layouts"
+	return c, nil
 }
 
 func loadConfigFile(path string) (*Config, error) {

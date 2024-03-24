@@ -8,6 +8,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vssio/go-vss/internal/build"
+	"github.com/vssio/go-vss/internal/config"
 )
 
 const port = "8080"
@@ -41,17 +42,17 @@ func (c *ServeCommand) Synopsis() string {
 
 func (c *ServeCommand) Run(args []string) int {
 	log.Printf("[INFO] serve started")
-	err := c.Meta.SetupConfig()
+
+	config, err := config.LoadConfig()
 	if err != nil {
-		log.Printf("[ERROR] loading config: %s", err)
+		log.Printf("[ERROR] %s", err)
 		return 1
 	}
-
 	// for local server
-	c.Meta.Config.BaseUrl = "http://localhost:" + port
+	config.BaseUrl = "http://localhost:" + port
 
 	// init site
-	c.builder = build.NewBuilder(c.Meta.Config)
+	c.builder = build.NewBuilder(config)
 	err = c.builder.Run()
 	if err != nil {
 		log.Printf("[ERROR] %s", err)
@@ -61,7 +62,7 @@ func (c *ServeCommand) Run(args []string) int {
 	// watch for changes
 	go c.watch()
 
-	fs := http.FileServer(htmlDir{http.Dir(c.Meta.Config.Dist)})
+	fs := http.FileServer(htmlDir{http.Dir(config.Dist)})
 	http.Handle("/", http.StripPrefix("/", fs))
 
 	log.Printf("[INFO] serving on http://localhost:%s\n", port)
@@ -100,6 +101,7 @@ func (c *ServeCommand) watch() error {
 			}
 			if event.Has(fsnotify.Write) {
 				log.Println("[INFO] modified file:", event.Name)
+				c.builder.ReloadConfig()
 				err = c.builder.Run()
 				if err != nil {
 					log.Printf("[ERROR] %s", err)
