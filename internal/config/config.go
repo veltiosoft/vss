@@ -49,8 +49,8 @@ func loadConfigFile(path string) (*Config, error) {
 }
 
 // AsMap returns a map[string]interface{} representation of the Config struct.
-func (c *Config) AsMap() map[string]string {
-	return map[string]string{
+func (c *Config) AsMap() map[string]interface{} {
+	return map[string]interface{}{
 		"title":       c.Title,
 		"description": c.Description,
 		"base_url":    c.BaseUrl,
