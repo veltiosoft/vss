@@ -4,3 +4,7 @@ base_url = "https://vss.veltiosoft.dev/"
 
 [build]
 ignore_files = ["README.md"]
+
+[build.goldmark.highlight]
+style = "nord"
+with_numbers = false
