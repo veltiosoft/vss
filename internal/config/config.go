@@ -8,12 +8,22 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+type GoldMarkHighlightConfig struct {
+	Style       string
+	WithNumbers bool `toml:"with_numbers"`
+}
+
+type GoldMarkConfig struct {
+	HighlightConfig GoldMarkHighlightConfig `toml:"highlight"`
+}
+
 type BuildConfig struct {
 	IgnoreFiles []string
+	Goldmark    GoldMarkConfig `toml:"goldmark"`
 }
 
 type Config struct {
-	Build       BuildConfig
+	Build       BuildConfig `toml:"build"`
 	Title       string
 	Description string
 	BaseUrl     string `toml:"base_url"`
@@ -30,7 +40,15 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	return loadConfigFile(path)
+	c, err := loadConfigFile(path)
+	if err != nil {
+		return nil, err
+	}
+	// set default values
+	c.Dist = "dist"
+	c.Static = "static"
+	c.Layouts = "layouts"
+	return c, nil
 }
 
 func loadConfigFile(path string) (*Config, error) {

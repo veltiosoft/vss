@@ -14,6 +14,9 @@ import (
 	"github.com/vssio/go-vss/internal/config"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
+
+	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
+	highlighting "github.com/yuin/goldmark-highlighting/v2"
 )
 
 // Builder is a struct for building a static site.
@@ -32,6 +35,16 @@ func NewBuilder(config *config.Config) *Builder {
 	return &Builder{
 		config: config,
 	}
+}
+
+// ReloadConfig reloads the config file.
+func (b *Builder) ReloadConfig() error {
+	c, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
+	b.config = c
+	return nil
 }
 
 func (b *Builder) Run() error {
@@ -59,7 +72,7 @@ func (b *Builder) Run() error {
 	}
 
 	log.Printf("[INFO] rendering markdown files\n")
-	b.gm = initGoldmark()
+	b.gm = b.initGoldmark()
 	// for storing rendered html
 	b.baseRenderContext = b.config.AsMap()
 	for _, markdownPath := range markdownFiles {
@@ -280,9 +293,17 @@ func getFilePathsByExt(dirPath, ext string) ([]string, error) {
 	return filePaths, nil
 }
 
-func initGoldmark() goldmark.Markdown {
+func (b *Builder) initGoldmark() goldmark.Markdown {
 	return goldmark.New(
-		goldmark.WithExtensions(extension.GFM),
+		goldmark.WithExtensions(
+			extension.GFM,
+			highlighting.NewHighlighting(
+				highlighting.WithStyle(b.config.Build.Goldmark.HighlightConfig.Style),
+				highlighting.WithFormatOptions(
+					chromahtml.WithLineNumbers(b.config.Build.Goldmark.HighlightConfig.WithNumbers),
+				),
+			),
+		),
 	)
 }
 
