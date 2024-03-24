@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/adrg/frontmatter"
 	"github.com/cbroglie/mustache"
 	"github.com/vssio/go-vss/internal/config"
 	"github.com/yuin/goldmark"
@@ -20,7 +21,10 @@ type Builder struct {
 	config *config.Config
 
 	// init in Run()
-	templateMap map[string]*mustache.Template
+	templateMap       map[string]*mustache.Template
+	gm                goldmark.Markdown
+	buf               bytes.Buffer
+	baseRenderContext map[string]interface{}
 }
 
 // NewBuilder returns a new Builder.
@@ -55,35 +59,69 @@ func (b *Builder) Run() error {
 	}
 
 	log.Printf("[INFO] rendering markdown files\n")
-	gm := initGoldmark()
+	b.gm = initGoldmark()
 	// for storing rendered html
-	var buf bytes.Buffer
-	renderContext := b.config.AsMap()
+	b.baseRenderContext = b.config.AsMap()
 	for _, markdownPath := range markdownFiles {
 		log.Printf("[INFO] rendering %s\n", markdownPath)
-		markdown, err := os.ReadFile(markdownPath)
-		if err != nil {
+		if err := b.renderContent(markdownPath); err != nil {
 			return err
 		}
-		if err := gm.Convert(markdown, &buf); err != nil {
-			return err
-		}
-		renderContext["contents"] = buf.String()
-		buf.Reset()
-
-		htmlPath := convertMarkdownPathToHtmlPath(markdownPath)
-		distFile, err := createDistFile(filepath.Join(b.config.Dist, htmlPath))
-		if err != nil {
-			return err
-		}
-		defer distFile.Close()
-		template, err := b.lookUpTemplate(htmlPath)
-		if err != nil {
-			return err
-		}
-		template.FRender(distFile, renderContext)
 	}
 	return nil
+}
+
+// renderContent renders the markdown file and writes the result to the dist directory.
+func (b *Builder) renderContent(markdownPath string) error {
+	htmlPath := convertMarkdownPathToHtmlPath(markdownPath)
+	distFile, err := createDistFile(filepath.Join(b.config.Dist, htmlPath))
+	if err != nil {
+		return err
+	}
+	defer distFile.Close()
+	template, err := b.lookUpTemplate(htmlPath)
+	if err != nil {
+		return err
+	}
+
+	renderContext, err := b.getRenderContext(markdownPath)
+	if err != nil {
+		return err
+	}
+	return template.FRender(distFile, renderContext)
+}
+
+// getRenderContext returns a map[string]interface{} that contains the content of the markdown file.
+func (b *Builder) getRenderContext(markdownPath string) (map[string]interface{}, error) {
+	defer b.buf.Reset()
+	content, err := os.ReadFile(markdownPath)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: matter を利用してビルドできるようにする
+	var matter YamlFrontMatter
+	markdown, err := frontmatter.Parse(strings.NewReader(string(content)), &matter)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.gm.Convert(markdown, &b.buf); err != nil {
+		return nil, err
+	}
+	renderContext := b.baseRenderContext
+	renderContext["contents"] = b.buf.String()
+
+	// content と markdown が同じであればここで return する
+	if bytes.Equal(content, markdown) {
+		return renderContext, nil
+	}
+
+	// matter のフィールドを renderContext に追加
+	// すでに存在する場合は上書き
+	for k, v := range matter.AsMap() {
+		renderContext[k] = v
+	}
+
+	return renderContext, nil
 }
 
 func (b *Builder) initTemplateMap(templateFiles []string) error {
