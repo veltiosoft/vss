@@ -10,6 +10,10 @@
     - バグ修正
 
 
+## v0.6.0
+
+
+
 ## v0.5.0
 
 - [ADD] yaml front matter の読み取りをサポートしました (front matter は必須ではありません)
