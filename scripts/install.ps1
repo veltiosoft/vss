@@ -32,6 +32,9 @@ $DownloadUrl = if (!$Version) {
   "https://github.com/vssio/go-vss/releases/download/${Version}/vss_${Target}.zip"
 }
 
+# print the download url
+Write-Output "Downloading ${DownloadUrl}"
+
 if (!(Test-Path $BinDir)) {
   New-Item $BinDir -ItemType Directory | Out-Null
 }
