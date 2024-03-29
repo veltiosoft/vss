@@ -9,7 +9,7 @@ assignees: ''
 
 **vss version**
 
-Please paste the results of running vss self update
+Please paste the results of running vss self version
 ```
 ```
 
