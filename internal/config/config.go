@@ -9,12 +9,15 @@ import (
 )
 
 type GoldMarkHighlightConfig struct {
-	Style       string
-	WithNumbers bool `toml:"with_numbers"`
+	Style       *string
+	WithNumbers *bool `toml:"with_numbers"`
 }
 
+// GoldMarkConfig is a struct for configuring goldmark.
+// なぜ Pointer なのか？
+// config file にキーを設定したかどうかを判定するため
 type GoldMarkConfig struct {
-	HighlightConfig GoldMarkHighlightConfig `toml:"highlight"`
+	HighlightConfig *GoldMarkHighlightConfig `toml:"highlight"`
 }
 
 type BuildConfig struct {
