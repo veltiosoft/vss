@@ -19,7 +19,7 @@
     - このバージョンでサポートしているキー
         - `style` (string)
         - `with_numbers` (bool)
-- [FIX] vss serve 時に dist ディレクトリも監視対象に含んでしまい、無限ループに陥る問題を修正しました #21
+- [FIX] vss serve 時に dist ディレクトリも監視対象に含んでしまい、無限ループに陥る問題を修正しました [#21](https://github.com/vssio/go-vss/issues/21)
 
 ## v0.6.0
 
