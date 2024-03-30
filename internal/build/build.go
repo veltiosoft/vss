@@ -3,6 +3,7 @@ package build
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -10,13 +11,12 @@ import (
 	"strings"
 
 	"github.com/adrg/frontmatter"
+	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/cbroglie/mustache"
 	"github.com/vssio/go-vss/internal/config"
 	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-
-	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
+	"github.com/yuin/goldmark/extension"
 )
 
 // Builder is a struct for building a static site.
@@ -35,6 +35,11 @@ func NewBuilder(config *config.Config) *Builder {
 	return &Builder{
 		config: config,
 	}
+}
+
+// GetDistPath returns the dist directory path.
+func (b Builder) GetDistPath() string {
+	return b.config.Dist
 }
 
 // ReloadConfig reloads the config file.
@@ -294,16 +299,31 @@ func getFilePathsByExt(dirPath, ext string) ([]string, error) {
 }
 
 func (b *Builder) initGoldmark() goldmark.Markdown {
+	// TODO: highlight は option にする(例: 他の syntax highlighter を使いたい場合のため)
+	extensions := []goldmark.Extender{
+		// default extensions
+		extension.GFM,
+	}
+	highlightoptions := []highlighting.Option{}
+	if b.config.Build.Goldmark.HighlightConfig != nil {
+		if b.config.Build.Goldmark.HighlightConfig.Style != nil {
+			highlightoptions = append(highlightoptions, highlighting.WithStyle(*b.config.Build.Goldmark.HighlightConfig.Style))
+		}
+		// TODO: キーがない場合は highlight しないようにする
+		if b.config.Build.Goldmark.HighlightConfig.WithNumbers != nil {
+			highlightoptions = append(
+				highlightoptions,
+				highlighting.WithFormatOptions(chromahtml.WithLineNumbers(*b.config.Build.Goldmark.HighlightConfig.WithNumbers)),
+			)
+		}
+	}
+
+	if len(highlightoptions) > 0 {
+		fmt.Println("highlightoptions")
+		extensions = append(extensions, highlighting.NewHighlighting(highlightoptions...))
+	}
 	return goldmark.New(
-		goldmark.WithExtensions(
-			extension.GFM,
-			highlighting.NewHighlighting(
-				highlighting.WithStyle(b.config.Build.Goldmark.HighlightConfig.Style),
-				highlighting.WithFormatOptions(
-					chromahtml.WithLineNumbers(b.config.Build.Goldmark.HighlightConfig.WithNumbers),
-				),
-			),
-		),
+		goldmark.WithExtensions(extensions...),
 	)
 }
 

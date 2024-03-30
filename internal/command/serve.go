@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vssio/go-vss/internal/build"
@@ -75,7 +76,12 @@ func (c *ServeCommand) Run(args []string) int {
 }
 
 func (c *ServeCommand) watch() error {
-	dirs, err := getDirPathsRecursive(".")
+	// dist/ 以下のディレクトリを無視するために、正規表現を生成する
+	ignores := []string{
+		c.builder.GetDistPath(),
+		filepath.Join(c.builder.GetDistPath(), "*"),
+	}
+	dirs, err := getDirPathsRecursive(".", ignores)
 	if err != nil {
 		return err
 	}
@@ -100,6 +106,9 @@ func (c *ServeCommand) watch() error {
 				return nil
 			}
 			if event.Has(fsnotify.Write) {
+				if slices.Contains(ignores, event.Name) {
+					continue
+				}
 				log.Println("[INFO] modified file:", event.Name)
 				c.builder.ReloadConfig()
 				err = c.builder.Run()
@@ -118,7 +127,7 @@ func (c *ServeCommand) watch() error {
 }
 
 // getDirPathsRecursive returns a slice of all directories in a given path.
-func getDirPathsRecursive(path string) ([]string, error) {
+func getDirPathsRecursive(path string, ignores []string) ([]string, error) {
 	var filePaths []string
 
 	err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
@@ -126,10 +135,25 @@ func getDirPathsRecursive(path string) ([]string, error) {
 			return err
 		}
 
-		if info.IsDir() {
-			filePaths = append(filePaths, path)
+		// ファイルを無視する
+		if !info.IsDir() {
+			return nil
 		}
 
+		// ignore と正規表現で一致する場合は無視する
+		for _, ignore := range ignores {
+			if ignore != "" {
+				matched, err := filepath.Match(ignore, path)
+				if err != nil {
+					return err
+				}
+				if matched {
+					return nil
+				}
+			}
+		}
+
+		filePaths = append(filePaths, path)
 		return nil
 	})
 

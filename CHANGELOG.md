@@ -10,9 +10,21 @@
     - バグ修正
 
 
+## v0.7.0
+
+- [UPDATE] 設定に `build.goldmark.highlight` を追加しました
+    - この設定を加えるとハイライト済みのコードブロックを生成するようになります
+    - 使っているライブラリはこちら: https://github.com/yuin/goldmark-highlighting
+    - 対応言語やスタイルについてはこちら: https://github.com/alecthomas/chroma
+    - このバージョンでサポートしているキー
+        - `style` (string)
+        - `with_numbers` (bool)
+- [FIX] vss serve 時に dist ディレクトリも監視対象に含んでしまい、無限ループに陥る問題を修正しました #21
+
 ## v0.6.0
 
-
+空白の100年
+- https://github.com/vssio/go-vss/releases/tag/v0.6.0
 
 ## v0.5.0
 
