@@ -3,7 +3,6 @@ package build
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -52,6 +51,7 @@ func (b *Builder) ReloadConfig() error {
 	return nil
 }
 
+// Run builds the static site.
 func (b *Builder) Run() error {
 	if err := createDistDir(b.config.Dist); err != nil {
 		return err
@@ -102,43 +102,73 @@ func (b *Builder) renderContent(markdownPath string) error {
 		return err
 	}
 
-	renderContext, err := b.getRenderContext(markdownPath)
+	filedata, err := b.getFileData(markdownPath)
+	if err != nil {
+		return err
+	}
+
+	// postSlug 処理
+	// TODO: ユーザー的に不要かもなのでどっかで消すか判断する
+	if filedata.FrontMatter.PostSlug == "" {
+		filedata.FrontMatter.PostSlug = filepath.ToSlash(strings.TrimSuffix(htmlPath, ".html"))
+	}
+
+	// og image 処理
+	if filedata.FrontMatter.OgImage == "" && filedata.FrontMatter.Emoji != "" {
+		svgPath := replaceExt(markdownPath, ".md", ".svg")
+		imagePath := filepath.Join(b.config.Dist, svgPath)
+		file, err := os.Create(imagePath)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		if err := filedata.FrontMatter.SaveTwemojiSvg(file); err != nil {
+			return err
+		}
+		filedata.FrontMatter.OgImage = "/" + filepath.ToSlash(svgPath)
+	}
+
+	renderContext, err := b.getRenderContext(filedata)
 	if err != nil {
 		return err
 	}
 	return template.FRender(distFile, renderContext)
 }
 
-// getRenderContext returns a map[string]interface{} that contains the content of the markdown file.
-func (b *Builder) getRenderContext(markdownPath string) (map[string]interface{}, error) {
+func (b *Builder) getFileData(markdownPath string) (FileData, error) {
+	var filedata FileData
 	defer b.buf.Reset()
 	content, err := os.ReadFile(markdownPath)
 	if err != nil {
-		return nil, err
+		return filedata, err
 	}
-	// TODO: matter を利用してビルドできるようにする
-	var matter YamlFrontMatter
-	markdown, err := frontmatter.Parse(strings.NewReader(string(content)), &matter)
+	var yfm YamlFrontMatter
+	markdown, err := frontmatter.Parse(strings.NewReader(string(content)), &yfm)
 	if err != nil {
-		return nil, err
+		return filedata, err
 	}
 	if err := b.gm.Convert(markdown, &b.buf); err != nil {
-		return nil, err
+		return filedata, err
 	}
-	renderContext := b.baseRenderContext
-	renderContext["contents"] = b.buf.String()
+	filedata.Content = b.buf.String()
 
-	// content と markdown が同じであればここで return する
+	// content と markdown が同じ場合は frontmatter がないとみなし、ここで終了
 	if bytes.Equal(content, markdown) {
-		return renderContext, nil
+		return filedata, nil
 	}
+	filedata.FrontMatter = yfm
+	return filedata, nil
+}
+
+// getRenderContext returns a map[string]interface{} that contains the content of the markdown file.
+func (b *Builder) getRenderContext(filedata FileData) (map[string]interface{}, error) {
+	renderContext := b.baseRenderContext
+	renderContext["contents"] = filedata.Content
 
 	// matter のフィールドを renderContext に追加
-	// すでに存在する場合は上書き
-	for k, v := range matter.AsMap() {
+	for k, v := range filedata.FrontMatter.AsMap() {
 		renderContext[k] = v
 	}
-
 	return renderContext, nil
 }
 
@@ -319,7 +349,6 @@ func (b *Builder) initGoldmark() goldmark.Markdown {
 	}
 
 	if len(highlightoptions) > 0 {
-		fmt.Println("highlightoptions")
 		extensions = append(extensions, highlighting.NewHighlighting(highlightoptions...))
 	}
 	return goldmark.New(

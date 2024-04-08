@@ -1,5 +1,6 @@
 ---
 title: "First release"
+emoji: "🎉"
 ---
 
 # First release
