@@ -19,13 +19,30 @@ type YamlFrontMatter struct {
 }
 
 func (y *YamlFrontMatter) SaveTwemojiSvg(w io.Writer) error {
+	return y.saveTwemojiImage(w, "svg")
+}
+
+func (y *YamlFrontMatter) SaveTwemojiPng(w io.Writer) error {
+	return y.saveTwemojiImage(w, "png")
+}
+
+func (y *YamlFrontMatter) saveTwemojiImage(w io.Writer, ext string) error {
 	r, _ := utf8.DecodeRuneInString(y.Emoji)
 
 	// 小文字の16進数文字列に変換する
 	codepoint := fmt.Sprintf("%04x", r)
 
-	// svg 画像をダウンロードする
-	res, err := http.Get(fmt.Sprintf("https://jdecked.github.io/twemoji/v/latest/svg/%s.svg", codepoint))
+	if ext != ".svg" && ext != "png" {
+		return fmt.Errorf("unsupported file extension: %s", ext)
+	}
+	var url string
+	if ext == "svg" {
+		url = fmt.Sprintf("https://jdecked.github.io/twemoji/v/latest/svg/%s.svg", codepoint)
+	} else if ext == "png" {
+		url = fmt.Sprintf("https://jdecked.github.io/twemoji/v/latest/72x72/%s.png", codepoint)
+	}
+
+	res, err := http.Get(url)
 	if err != nil {
 		return err
 	}

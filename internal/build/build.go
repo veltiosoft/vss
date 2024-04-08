@@ -120,17 +120,17 @@ func (b *Builder) renderContent(markdownPath string) error {
 
 	// og image 処理
 	if filedata.FrontMatter.OgImage == "" && filedata.FrontMatter.Emoji != "" {
-		svgPath := replaceExt(markdownPath, ".md", ".svg")
-		imagePath := filepath.Join(b.config.Dist, svgPath)
-		file, err := os.Create(imagePath)
+		imagePath := replaceExt(markdownPath, ".md", ".png")
+		imageDistPath := filepath.Join(b.config.Dist, imagePath)
+		file, err := os.Create(imageDistPath)
 		if err != nil {
 			return err
 		}
 		defer file.Close()
-		if err := filedata.FrontMatter.SaveTwemojiSvg(file); err != nil {
+		if err := filedata.FrontMatter.SaveTwemojiPng(file); err != nil {
 			return err
 		}
-		filedata.FrontMatter.OgImage = filepath.ToSlash(svgPath)
+		filedata.FrontMatter.OgImage = filepath.ToSlash(imagePath)
 	}
 
 	renderContext, err := b.getRenderContext(filedata)
