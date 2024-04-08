@@ -9,6 +9,11 @@
 - FIX
     - バグ修正
 
+## v0.9.0
+
+- [UPDATE] コンテンツの生成を goroutine で行うようにしました
+    - これにより、ビルド時間が短縮されることが期待されます
+
 ## v0.8.0
 
 - [CHANGE] Yaml front matter のキーの命名規則を snake_case に変更しました

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/adrg/frontmatter"
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
@@ -85,9 +86,32 @@ func (b *Builder) Run() error {
 	b.gm = b.initGoldmark()
 	// for storing rendered html
 	b.baseRenderContext = b.config.AsMap()
+	// Create a channel to receive errors from goroutines
+	errCh := make(chan error)
+
+	// Use a wait group to wait for all goroutines to finish
+	var wg sync.WaitGroup
+
 	for _, markdownPath := range markdownFiles {
-		log.Printf("[INFO] rendering %s\n", markdownPath)
-		if err := b.renderContent(markdownPath); err != nil {
+		wg.Add(1)
+		go func(path string) {
+			defer wg.Done()
+			log.Printf("[INFO] rendering %s\n", path)
+			if err := b.renderContent(path); err != nil {
+				errCh <- err
+			}
+		}(markdownPath)
+	}
+
+	// Start a goroutine to close the error channel once all goroutines are done
+	go func() {
+		wg.Wait()
+		close(errCh)
+	}()
+
+	// Check for any errors from goroutines
+	for err := range errCh {
+		if err != nil {
 			return err
 		}
 	}
