@@ -63,7 +63,7 @@ func (y *YamlFrontMatter) saveTwemojiImage(w io.Writer, ext string) error {
 			return err
 		}
 		newImage := image.NewRGBA(image.Rect(0, 0, emojiPngSize*2, emojiPngSize*2))
-		draw.CatmullRom.Scale(newImage, newImage.Bounds(), img, img.Bounds(), draw.Over, nil)
+		draw.BiLinear.Scale(newImage, newImage.Bounds(), img, img.Bounds(), draw.Over, nil)
 		return png.Encode(w, newImage)
 	} else {
 		_, err = io.Copy(w, res.Body)
