@@ -51,6 +51,11 @@ func (b *Builder) ReloadConfig() error {
 	return nil
 }
 
+// SetBaseUrl sets the base URL.
+func (b *Builder) SetBaseUrl(baseURL string) {
+	b.config.BaseUrl = baseURL
+}
+
 // Run builds the static site.
 func (b *Builder) Run() error {
 	if err := createDistDir(b.config.Dist); err != nil {
@@ -125,7 +130,7 @@ func (b *Builder) renderContent(markdownPath string) error {
 		if err := filedata.FrontMatter.SaveTwemojiSvg(file); err != nil {
 			return err
 		}
-		filedata.FrontMatter.OgImage = "/" + filepath.ToSlash(svgPath)
+		filedata.FrontMatter.OgImage = filepath.ToSlash(svgPath)
 	}
 
 	renderContext, err := b.getRenderContext(filedata)

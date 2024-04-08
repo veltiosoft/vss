@@ -10,12 +10,12 @@ import (
 type YamlFrontMatter struct {
 	Author      string   `yaml:"author"`
 	Title       string   `yaml:"title"`
-	PubDatetime string   `yaml:"pubDatetime"`
-	PostSlug    string   `yaml:"postSlug"`
+	PubDatetime string   `yaml:"pub_datetime"`
+	PostSlug    string   `yaml:"post_slug"`
 	Description string   `yaml:"description"`
 	Tags        []string `yaml:"tags"`
 	Emoji       string   `yaml:"emoji"`
-	OgImage     string   `yaml:"ogImage"`
+	OgImage     string   `yaml:"og_image"`
 }
 
 func (y *YamlFrontMatter) SaveTwemojiSvg(w io.Writer) error {
@@ -38,13 +38,13 @@ func (y *YamlFrontMatter) SaveTwemojiSvg(w io.Writer) error {
 
 func (y *YamlFrontMatter) AsMap() map[string]interface{} {
 	return map[string]interface{}{
-		"author":      y.Author,
-		"title":       y.Title,
-		"pubDatetime": y.PubDatetime,
-		"postSlug":    y.PostSlug,
-		"description": y.Description,
-		"tags":        y.Tags,
-		"emoji":       y.Emoji,
-		"ogImage":     y.OgImage,
+		"author":       y.Author,
+		"title":        y.Title,
+		"pub_datetime": y.PubDatetime,
+		"post_slug":    y.PostSlug,
+		"description":  y.Description,
+		"tags":         y.Tags,
+		"emoji":        y.Emoji,
+		"og_image":     y.OgImage,
 	}
 }
