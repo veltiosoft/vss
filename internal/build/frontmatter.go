@@ -8,10 +8,11 @@ import (
 	"net/http"
 	"unicode/utf8"
 
-	"golang.org/x/image/draw"
+	"github.com/srwiley/oksvg"
+	"github.com/srwiley/rasterx"
 )
 
-const emojiPngSize = 72
+const emojiPngSize = 400
 
 type YamlFrontMatter struct {
 	Author      string   `yaml:"author"`
@@ -41,14 +42,8 @@ func (y *YamlFrontMatter) saveTwemojiImage(w io.Writer, ext string) error {
 	if ext != ".svg" && ext != "png" {
 		return fmt.Errorf("unsupported file extension: %s", ext)
 	}
-	var url string
-	if ext == "svg" {
-		url = fmt.Sprintf("https://jdecked.github.io/twemoji/v/latest/svg/%s.svg", codepoint)
-	} else if ext == "png" {
-		url = fmt.Sprintf("https://jdecked.github.io/twemoji/v/latest/72x72/%s.png", codepoint)
-	}
 
-	res, err := http.Get(url)
+	res, err := http.Get(fmt.Sprintf("https://jdecked.github.io/twemoji/v/latest/svg/%s.svg", codepoint))
 	if err != nil {
 		return err
 	}
@@ -56,15 +51,13 @@ func (y *YamlFrontMatter) saveTwemojiImage(w io.Writer, ext string) error {
 		return fmt.Errorf("failed to download emoji: %s", res.Status)
 	}
 
-	// png の場合はリサイズする
+	// png の場合 svg から変換する
 	if ext == "png" {
-		img, err := png.Decode(res.Body)
-		if err != nil {
-			return err
-		}
-		newImage := image.NewRGBA(image.Rect(0, 0, emojiPngSize*2, emojiPngSize*2))
-		draw.BiLinear.Scale(newImage, newImage.Bounds(), img, img.Bounds(), draw.Over, nil)
-		return png.Encode(w, newImage)
+		icon, _ := oksvg.ReadIconStream(res.Body)
+		icon.SetTarget(0, 0, float64(emojiPngSize), float64(emojiPngSize))
+		rgba := image.NewRGBA(image.Rect(0, 0, emojiPngSize, emojiPngSize))
+		icon.Draw(rasterx.NewDasher(emojiPngSize, emojiPngSize, rasterx.NewScannerGV(emojiPngSize, emojiPngSize, rgba, rgba.Bounds())), 1)
+		return png.Encode(w, rgba)
 	} else {
 		_, err = io.Copy(w, res.Body)
 		return err

@@ -12,6 +12,8 @@ require (
 	github.com/minio/selfupdate v0.6.0
 	github.com/mitchellh/cli v1.1.5
 	github.com/pelletier/go-toml/v2 v2.1.0
+	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
+	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	github.com/yuin/goldmark v1.5.6
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 )
@@ -40,6 +42,8 @@ require (
 	github.com/spf13/cast v1.5.1 // indirect
 	golang.org/x/crypto v0.17.0 // indirect
 	golang.org/x/image v0.15.0 // indirect
+	golang.org/x/net v0.10.0 // indirect
 	golang.org/x/sys v0.15.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
