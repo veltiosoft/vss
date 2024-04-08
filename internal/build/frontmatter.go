@@ -2,10 +2,16 @@ package build
 
 import (
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"unicode/utf8"
+
+	"golang.org/x/image/draw"
 )
+
+const emojiPngSize = 72
 
 type YamlFrontMatter struct {
 	Author      string   `yaml:"author"`
@@ -49,8 +55,20 @@ func (y *YamlFrontMatter) saveTwemojiImage(w io.Writer, ext string) error {
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download emoji: %s", res.Status)
 	}
-	_, err = io.Copy(w, res.Body)
-	return err
+
+	// png の場合はリサイズする
+	if ext == "png" {
+		img, err := png.Decode(res.Body)
+		if err != nil {
+			return err
+		}
+		newImage := image.NewRGBA(image.Rect(0, 0, emojiPngSize*2, emojiPngSize*2))
+		draw.CatmullRom.Scale(newImage, newImage.Bounds(), img, img.Bounds(), draw.Over, nil)
+		return png.Encode(w, newImage)
+	} else {
+		_, err = io.Copy(w, res.Body)
+		return err
+	}
 }
 
 func (y *YamlFrontMatter) AsMap() map[string]interface{} {
