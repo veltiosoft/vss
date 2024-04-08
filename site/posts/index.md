@@ -6,4 +6,4 @@ emoji: "📝"
 
 # Posts
 
-- [first](first)
+- [v0.8.0](v0.8.0)
