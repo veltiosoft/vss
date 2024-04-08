@@ -111,6 +111,7 @@ func (c *ServeCommand) watch() error {
 				}
 				log.Println("[INFO] modified file:", event.Name)
 				c.builder.ReloadConfig()
+				c.builder.SetBaseUrl("http://localhost:" + port)
 				err = c.builder.Run()
 				if err != nil {
 					log.Printf("[ERROR] %s", err)

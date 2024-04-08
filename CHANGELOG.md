@@ -9,6 +9,22 @@
 - FIX
     - バグ修正
 
+## v0.8.0
+
+- [CHANGE] Yaml front matter のキーの命名規則を snake_case に変更しました
+    - これに伴い、テンプレートのレンダリング時に使われる変数も変更されました
+    - 今までは front matter が camelCase で vss.toml が snake_case でしたが、これはユーザーの認知負荷が高いと判断したので統一しました
+- [CHANGE] vss.toml のキー名を変更しました
+    - `title` を `site_title` に変更しました
+    - `description` を `site_description` に変更しました
+    - これに伴い、テンプレートのレンダリング時に使われる変数も変更されました
+    - title と description は yaml front matter で使われているため、衝突を避けるために変更しました
+- [UPDATE] Yaml front matter に `og_image` 変数を追加しました
+    - og:image の設定に利用してください
+- [UPDATE] Yaml front matter に `emoji` が設定されていて、かつ `og_image` が設定されていない場合、`og_image` 変数には emoji の画像パスが設定されるようになりました
+    - og_image が設定されていない場合と判定される条件は以下の通りです
+        - og_image が空文字列の場合
+        - og_image が設定されていない場合
 
 ## v0.7.0
 

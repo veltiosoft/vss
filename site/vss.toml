@@ -1,6 +1,6 @@
-title = "vss docs"
-description = "vss document site"
-base_url = "https://vss.veltiosoft.dev/"
+site_title = "vss docs"
+site_description = "vss document site"
+base_url = "https://vss.veltiosoft.dev"
 
 [build]
 ignore_files = ["README.md"]

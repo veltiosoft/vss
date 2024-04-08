@@ -26,10 +26,10 @@ type BuildConfig struct {
 }
 
 type Config struct {
-	Build       BuildConfig `toml:"build"`
-	Title       string
-	Description string
-	BaseUrl     string `toml:"base_url"`
+	Build           BuildConfig `toml:"build"`
+	SiteTitle       string      `toml:"site_title"`
+	SiteDescription string      `toml:"site_description"`
+	BaseUrl         string      `toml:"base_url"`
 
 	// The following settings are not in config.toml
 	Dist    string // dist directory
@@ -72,9 +72,9 @@ func loadConfigFile(path string) (*Config, error) {
 // AsMap returns a map[string]interface{} representation of the Config struct.
 func (c *Config) AsMap() map[string]interface{} {
 	return map[string]interface{}{
-		"title":       c.Title,
-		"description": c.Description,
-		"base_url":    c.BaseUrl,
+		"site_title":       c.SiteTitle,
+		"site_description": c.SiteDescription,
+		"base_url":         c.BaseUrl,
 	}
 }
 
