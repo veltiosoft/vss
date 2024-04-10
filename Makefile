@@ -19,12 +19,12 @@ build:
 .PHONY: site
 site: build
 	cp $(BIN) site
-	cd site && ./vss build
+	cd site && ./$(BIN) build
 
 .PHONY: serve-site
 serve-site: build
 	cp $(BIN) site
-	cd site && ./vss serve
+	cd site && ./$(BIN) serve
 
 .PHONY: selfupdate
 selfupdate: build

@@ -26,7 +26,6 @@ type Builder struct {
 	// init in Run()
 	templateMap       map[string]*mustache.Template
 	gm                goldmark.Markdown
-	buf               bytes.Buffer
 	baseRenderContext map[string]interface{}
 }
 
@@ -58,7 +57,7 @@ func (b *Builder) SetBaseUrl(baseURL string) {
 }
 
 // Run builds the static site.
-func (b *Builder) Run() error {
+func (b Builder) Run() error {
 	if err := createDistDir(b.config.Dist); err != nil {
 		return err
 	}
@@ -91,15 +90,14 @@ func (b *Builder) Run() error {
 
 	// Use a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
-
+	wg.Add(len(markdownFiles))
 	for _, markdownPath := range markdownFiles {
-		wg.Add(1)
 		go func(path string) {
-			defer wg.Done()
 			log.Printf("[INFO] rendering %s\n", path)
 			if err := b.renderContent(path); err != nil {
 				errCh <- err
 			}
+			wg.Done()
 		}(markdownPath)
 	}
 
@@ -119,7 +117,7 @@ func (b *Builder) Run() error {
 }
 
 // renderContent renders the markdown file and writes the result to the dist directory.
-func (b *Builder) renderContent(markdownPath string) error {
+func (b Builder) renderContent(markdownPath string) error {
 	htmlPath := convertMarkdownPathToHtmlPath(markdownPath)
 	distFile, err := createDistFile(filepath.Join(b.config.Dist, htmlPath))
 	if err != nil {
@@ -164,9 +162,10 @@ func (b *Builder) renderContent(markdownPath string) error {
 	return template.FRender(distFile, renderContext)
 }
 
-func (b *Builder) getFileData(markdownPath string) (FileData, error) {
+func (b Builder) getFileData(markdownPath string) (FileData, error) {
 	var filedata FileData
-	defer b.buf.Reset()
+	filedata.Path = markdownPath
+	var buf bytes.Buffer
 	content, err := os.ReadFile(markdownPath)
 	if err != nil {
 		return filedata, err
@@ -176,10 +175,10 @@ func (b *Builder) getFileData(markdownPath string) (FileData, error) {
 	if err != nil {
 		return filedata, err
 	}
-	if err := b.gm.Convert(markdown, &b.buf); err != nil {
+	if err := b.gm.Convert(markdown, &buf); err != nil {
 		return filedata, err
 	}
-	filedata.Content = b.buf.String()
+	filedata.Content = buf.String()
 
 	// content と markdown が同じ場合は frontmatter がないとみなし、ここで終了
 	if bytes.Equal(content, markdown) {
@@ -190,10 +189,16 @@ func (b *Builder) getFileData(markdownPath string) (FileData, error) {
 }
 
 // getRenderContext returns a map[string]interface{} that contains the content of the markdown file.
-func (b *Builder) getRenderContext(filedata FileData) (map[string]interface{}, error) {
-	renderContext := b.baseRenderContext
+func (b Builder) getRenderContext(filedata FileData) (map[string]interface{}, error) {
+	// make することで map のデータ競合を避ける
+	renderContext := make(map[string]interface{})
+
 	renderContext["contents"] = filedata.Content
 
+	// baseRenderContext のフィールドを renderContext に追加
+	for k, v := range b.baseRenderContext {
+		renderContext[k] = v
+	}
 	// matter のフィールドを renderContext に追加
 	for k, v := range filedata.FrontMatter.AsMap() {
 		renderContext[k] = v
@@ -215,7 +220,7 @@ func (b *Builder) initTemplateMap(templateFiles []string) error {
 }
 
 // lookUpTemplate returns the path (file path) of the template path.
-func (b *Builder) lookUpTemplate(path string) (*mustache.Template, error) {
+func (b Builder) lookUpTemplate(path string) (*mustache.Template, error) {
 	dir := filepath.Dir(path)
 	layoutsDir := b.config.Layouts
 

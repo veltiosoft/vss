@@ -1,6 +1,6 @@
 module github.com/vssio/go-vss
 
-go 1.21.0
+go 1.22
 
 require (
 	github.com/adrg/frontmatter v0.2.0
