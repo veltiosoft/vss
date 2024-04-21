@@ -154,6 +154,10 @@ func extractZip(resp *http.Response) (io.Reader, error) {
 
 	bufr := bufra.NewBufReaderAt(bytes.NewReader(buf.Bytes()), buf.Len())
 	r, err := zip.NewReader(bufr, int64(buf.Len()))
+	if err != nil {
+		return nil, err
+	}
+
 	for _, file := range r.File {
 		filename := filepath.Join(strings.Split(file.Name, "/")[1:]...)
 		if filename == binaryName {
