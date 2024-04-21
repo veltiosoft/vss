@@ -28,8 +28,7 @@ serve-site: build
 
 .PHONY: selfupdate
 selfupdate: build
-	cp $(BIN) bin
-	cd bin && ./vss self update
+	./vss self update
 
 .PHONY: show-version
 show-version: $(GOBIN)/gobump
