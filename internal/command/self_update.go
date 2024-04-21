@@ -10,7 +10,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -22,6 +21,7 @@ import (
 
 const (
 	latestReleaseUrl = "https://github.com/vssio/go-vss/releases/latest/download"
+	exe              = "vss"
 )
 
 type SelfUpdateCommand struct {
@@ -81,13 +81,6 @@ func (c *SelfUpdateCommand) Run(args []string) int {
 	}
 	log.Printf("[INFO] Successfully updated")
 
-	// vss --version でバージョンが表示されるようにする
-	// 出力は標準出力になる
-	exe, err := filepath.Abs(os.Args[0])
-	if err != nil {
-		log.Printf("[ERROR] %s", err)
-		return 1
-	}
 	cmd := exec.Command(exe, "self", "version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -161,6 +154,10 @@ func extractZip(resp *http.Response) (io.Reader, error) {
 
 	bufr := bufra.NewBufReaderAt(bytes.NewReader(buf.Bytes()), buf.Len())
 	r, err := zip.NewReader(bufr, int64(buf.Len()))
+	if err != nil {
+		return nil, err
+	}
+
 	for _, file := range r.File {
 		filename := filepath.Join(strings.Split(file.Name, "/")[1:]...)
 		if filename == binaryName {

@@ -2,6 +2,7 @@ package vss
 
 import (
 	"github.com/mitchellh/cli"
+
 	"github.com/vssio/go-vss/internal/command"
 )
 
@@ -19,7 +20,6 @@ func initCommands(metaPtr *command.Meta) map[string]cli.CommandFactory {
 			return &command.BuildCommand{
 				Meta: meta,
 			}, nil
-
 		},
 		"serve": func() (cli.Command, error) {
 			return &command.ServeCommand{
