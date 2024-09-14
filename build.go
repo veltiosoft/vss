@@ -1,11 +1,9 @@
-package command
+package vss
 
 import (
 	"log"
 
 	"github.com/bradhe/stopwatch"
-	"github.com/vssio/go-vss/internal/build"
-	"github.com/vssio/go-vss/internal/config"
 )
 
 type BuildCommand struct {
@@ -25,13 +23,13 @@ func (c *BuildCommand) Run(args []string) int {
 	// init stop watch
 	sw := stopwatch.Start()
 
-	config, err := config.LoadConfig()
+	config, err := LoadConfig()
 	if err != nil {
 		log.Printf("[ERROR] %s", err)
 		return 1
 	}
 
-	builder := build.NewBuilder(config)
+	builder := NewBuilder(config)
 	err = builder.Run()
 	if err != nil {
 		log.Printf("[ERROR] %s", err)

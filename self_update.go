@@ -1,4 +1,4 @@
-package command
+package vss
 
 import (
 	"archive/tar"

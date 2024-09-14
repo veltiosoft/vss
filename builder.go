@@ -1,4 +1,4 @@
-package build
+package vss
 
 import (
 	"bytes"
@@ -13,7 +13,6 @@ import (
 	"github.com/adrg/frontmatter"
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/cbroglie/mustache"
-	"github.com/vssio/go-vss/internal/config"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
@@ -21,7 +20,7 @@ import (
 
 // Builder is a struct for building a static site.
 type Builder struct {
-	config *config.Config
+	config *Config
 
 	// init in Run()
 	templateMap       map[string]*mustache.Template
@@ -30,7 +29,7 @@ type Builder struct {
 }
 
 // NewBuilder returns a new Builder.
-func NewBuilder(config *config.Config) *Builder {
+func NewBuilder(config *Config) *Builder {
 	return &Builder{
 		config: config,
 	}
@@ -43,7 +42,7 @@ func (b Builder) GetDistPath() string {
 
 // ReloadConfig reloads the config file.
 func (b *Builder) ReloadConfig() error {
-	c, err := config.LoadConfig()
+	c, err := LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -58,7 +57,7 @@ func (b *Builder) SetBaseUrl(baseURL string) {
 
 // Run builds the static site.
 func (b Builder) Run() error {
-	if err := createDistDir(b.config.Dist); err != nil {
+	if err := createDistDir(b.config.Dist, true); err != nil {
 		return err
 	}
 
@@ -321,21 +320,20 @@ func existDir(dir string) bool {
 	return info.IsDir()
 }
 
-func createDistDir(dist string) error {
+func createDistDir(dist string, overwrite bool) error {
 	// TODO: cache dist directory
 	if existDir(dist) {
+		if !overwrite {
+			return errors.New("dist directory already exists")
+		}
 		log.Printf("[INFO] re creating dist directory: %s", dist)
 		if err := os.RemoveAll(dist); err != nil {
 			return err
 		}
-		if err := os.Mkdir(dist, os.ModePerm); err != nil {
-			return err
-		}
-	} else {
-		log.Printf("[INFO] creating dist directory: %s", dist)
-		if err := os.Mkdir(dist, os.ModePerm); err != nil {
-			return err
-		}
+	}
+	log.Printf("[INFO] creating dist directory: %s", dist)
+	if err := os.Mkdir(dist, os.ModePerm); err != nil {
+		return err
 	}
 	return nil
 }
