@@ -1,10 +1,8 @@
-package skeleton
+package vss
 
 import (
 	"embed"
-	"errors"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,7 +27,8 @@ func GenerateSkeleton(distDir string) error {
 // copyEmbedFiles copies all files in the embed.FS to the destination directory.
 func copyEmbedFiles(efs *embed.FS, distDir string) error {
 	// Create the destination directory if it doesn't exist
-	if err := createDistDir(distDir); err != nil {
+	// TODO(zztkm): add a flag to force overwrite the dist directory
+	if err := createDistDir(distDir, false); err != nil {
 		return err
 	}
 
@@ -64,26 +63,4 @@ func copyEmbedFiles(efs *embed.FS, distDir string) error {
 	}
 
 	return nil
-}
-
-func createDistDir(dist string) error {
-	// TODO: cache dist directory
-	if existDir(dist) {
-		return errors.New("dist directory already exists")
-	} else {
-		log.Printf("[INFO] creating dist directory: %s", dist)
-		if err := os.MkdirAll(dist, os.ModePerm); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// existDir checks if a directory exists.
-func existDir(dir string) bool {
-	info, err := os.Stat(dir)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return info.IsDir()
 }

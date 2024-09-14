@@ -1,10 +1,8 @@
-package command
+package vss
 
 import (
 	"fmt"
 	"log"
-
-	"github.com/vssio/go-vss/internal/skeleton"
 )
 
 type NewCommand struct {
@@ -26,7 +24,7 @@ func (c *NewCommand) Run(args []string) int {
 		return 1
 	}
 	log.Println("[INFO] generate skeleton started")
-	err := skeleton.GenerateSkeleton(args[0])
+	err := GenerateSkeleton(args[0])
 	if err != nil {
 		log.Printf("[ERROR] %s", err)
 		return 1

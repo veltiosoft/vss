@@ -1,5 +1,5 @@
 //go:build !windows
 
-package command
+package vss
 
 const binaryName = "vss"

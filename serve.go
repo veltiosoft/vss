@@ -1,4 +1,4 @@
-package command
+package vss
 
 import (
 	"log"
@@ -8,8 +8,6 @@ import (
 	"slices"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/vssio/go-vss/internal/build"
-	"github.com/vssio/go-vss/internal/config"
 )
 
 const port = "8080"
@@ -30,7 +28,7 @@ func (d htmlDir) Open(name string) (http.File, error) {
 
 type ServeCommand struct {
 	Meta
-	builder *build.Builder
+	builder *Builder
 }
 
 func (c *ServeCommand) Help() string {
@@ -44,7 +42,7 @@ func (c *ServeCommand) Synopsis() string {
 func (c *ServeCommand) Run(args []string) int {
 	log.Printf("[INFO] serve started")
 
-	config, err := config.LoadConfig()
+	config, err := LoadConfig()
 	if err != nil {
 		log.Printf("[ERROR] %s", err)
 		return 1
@@ -53,7 +51,7 @@ func (c *ServeCommand) Run(args []string) int {
 	config.BaseUrl = "http://localhost:" + port
 
 	// init site
-	c.builder = build.NewBuilder(config)
+	c.builder = NewBuilder(config)
 	err = c.builder.Run()
 	if err != nil {
 		log.Printf("[ERROR] %s", err)

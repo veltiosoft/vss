@@ -2,14 +2,12 @@ package vss
 
 import (
 	"github.com/mitchellh/cli"
-
-	"github.com/vssio/go-vss/internal/command"
 )
 
 // Commands initializes the Commands factory map.
-func initCommands(metaPtr *command.Meta) map[string]cli.CommandFactory {
+func initCommands(metaPtr *Meta) map[string]cli.CommandFactory {
 	if metaPtr == nil {
-		metaPtr = new(command.Meta)
+		metaPtr = new(Meta)
 	}
 	meta := *metaPtr
 	meta.Version = version
@@ -17,27 +15,27 @@ func initCommands(metaPtr *command.Meta) map[string]cli.CommandFactory {
 
 	all := map[string]cli.CommandFactory{
 		"build": func() (cli.Command, error) {
-			return &command.BuildCommand{
+			return &BuildCommand{
 				Meta: meta,
 			}, nil
 		},
 		"serve": func() (cli.Command, error) {
-			return &command.ServeCommand{
+			return &ServeCommand{
 				Meta: meta,
 			}, nil
 		},
 		"new": func() (cli.Command, error) {
-			return &command.NewCommand{
+			return &NewCommand{
 				Meta: meta,
 			}, nil
 		},
 		"self update": func() (cli.Command, error) {
-			return &command.SelfUpdateCommand{
+			return &SelfUpdateCommand{
 				Meta: meta,
 			}, nil
 		},
 		"self version": func() (cli.Command, error) {
-			return &command.SelfVersionCommand{
+			return &SelfVersionCommand{
 				Meta: meta,
 			}, nil
 		},

@@ -4,7 +4,6 @@ import (
 	"log"
 
 	"github.com/mitchellh/cli"
-	"github.com/vssio/go-vss/internal/command"
 )
 
 const version = "0.11.0"
@@ -16,7 +15,7 @@ func Version() string {
 }
 
 func Run(args []string) int {
-	metaPtr := new(command.Meta)
+	metaPtr := new(Meta)
 	c := &cli.CLI{
 		Name:         "vss",
 		Version:      version,
