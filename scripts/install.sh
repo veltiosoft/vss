@@ -19,13 +19,13 @@ fi
 if [ "$OS" = "Windows_NT" ]; then
 	target="windows_amd64"
 	if ! command -v unzip >/dev/null; then
-		echo "Error: unzip is required to install vss.exe (see: https://github.com/vssio/vss_install#unzip-is-required)." 1>&2
+		echo "Error: unzip is required to install vss.exe (see: https://github.com/veltiosoft/vss_install#unzip-is-required)." 1>&2
 		exit 1
 	fi
 	if [ $# -eq 0 ]; then
-		vss_uri="https://github.com/vssio/go-vss/releases/latest/download/vss_${target}.zip"
+		vss_uri="https://github.com/veltiosoft/go-vss/releases/latest/download/vss_${target}.zip"
 	else
-		vss_uri="https://github.com/vssio/go-vss/releases/download/${1}/vss_${target}.zip"
+		vss_uri="https://github.com/veltiosoft/go-vss/releases/download/${1}/vss_${target}.zip"
 	fi
 else
 	case $(uname -sm) in
@@ -48,9 +48,9 @@ else
 	*) target="linux_amd64" ;;
 	esac
 	if [ $# -eq 0 ]; then
-		vss_uri="https://github.com/vssio/go-vss/releases/latest/download/vss_${target}.${ext}"
+		vss_uri="https://github.com/veltiosoft/go-vss/releases/latest/download/vss_${target}.${ext}"
 	else
-		vss_uri="https://github.com/vssio/go-vss/releases/download/${1}/vss_${target}.${ext}"
+		vss_uri="https://github.com/veltiosoft/go-vss/releases/download/${1}/vss_${target}.${ext}"
 	fi
 fi
 

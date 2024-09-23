@@ -1,4 +1,4 @@
-module github.com/vssio/go-vss
+module github.com/veltiosoft/go-vss
 
 go 1.22
 

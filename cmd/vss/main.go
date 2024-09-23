@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/vssio/go-vss"
+	"github.com/veltiosoft/go-vss"
 )
 
 func main() {

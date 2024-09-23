@@ -1,7 +1,7 @@
 BIN := vss
 VERSION := $$(make -s show-version)
 CURRENT_REVISION := $(shell git rev-parse --short HEAD)
-BUILD_LDFLAGS := "-s -w -X github.com/vssio/go-vss.revision=$(CURRENT_REVISION)"
+BUILD_LDFLAGS := "-s -w -X github.com/veltiosoft/go-vss.revision=$(CURRENT_REVISION)"
 GOBIN ?= $(shell go env GOPATH)/bin
 
 .PHONY: tag

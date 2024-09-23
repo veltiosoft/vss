@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	latestReleaseUrl = "https://github.com/vssio/go-vss/releases/latest/download"
+	latestReleaseUrl = "https://github.com/veltiosoft/go-vss/releases/latest/download"
 	exe              = "vss"
 )
 

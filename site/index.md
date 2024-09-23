@@ -4,7 +4,7 @@ A static site generator.
 
 ![vss-logo](./image.gif)
 
-- [GitHub](https://github.com/vssio/go-vss)
+- [GitHub](https://github.com/veltiosoft/go-vss)
 
 ## Features
 
@@ -20,22 +20,22 @@ For Mac & Linux
 
 latest version
 ```sh
-curl -sfL https://raw.githubusercontent.com/vssio/go-vss/main/scripts/install.sh | sh
+curl -sfL https://raw.githubusercontent.com/veltiosoft/go-vss/main/scripts/install.sh | sh
 ```
 
 specific version
 ```sh
-curl -sfL https://raw.githubusercontent.com/vssio/go-vss/main/scripts/install.sh | sh -s v0.0.1
+curl -sfL https://raw.githubusercontent.com/veltiosoft/go-vss/main/scripts/install.sh | sh -s v0.0.1
 ```
 
 For Windows (with PowerShell)
 ```powershell
-irm https://raw.githubusercontent.com/vssio/go-vss/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/veltiosoft/go-vss/main/scripts/install.ps1 | iex
 ```
 
 specific version
 ```powershell
-$v="v0.0.1"; irm https://raw.githubusercontent.com/vssio/go-vss/main/scripts/install.ps1 | iex
+$v="v0.0.1"; irm https://raw.githubusercontent.com/veltiosoft/go-vss/main/scripts/install.ps1 | iex
 ```
 
 ## Contents

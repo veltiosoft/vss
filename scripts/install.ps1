@@ -27,9 +27,9 @@ $vssExe = "$BinDir\vss.exe"
 $Target = "windows_amd64"
 
 $DownloadUrl = if (!$Version) {
-  "https://github.com/vssio/go-vss/releases/latest/download/vss_${Target}.zip"
+  "https://github.com/veltiosoft/go-vss/releases/latest/download/vss_${Target}.zip"
 } else {
-  "https://github.com/vssio/go-vss/releases/download/${Version}/vss_${Target}.zip"
+  "https://github.com/veltiosoft/go-vss/releases/download/${Version}/vss_${Target}.zip"
 }
 
 # print the download url
