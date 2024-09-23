@@ -13,7 +13,11 @@
 
 ### misc
 
+- [CHANGE] organization を vssio から veltiosoft に変更しました
+  - これに伴い、Go パッケージ `github.com/vssio/go-vss` は `github.com/veltiosoft/go-vss` に変更
+  - @zztkm
 - [UPDATE] パッケージ構成をフラットパッケージに変更しました
+  - @zztkm
 
 ## v0.11.0
 
