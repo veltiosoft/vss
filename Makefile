@@ -58,11 +58,11 @@ clean:
 	go clean
 
 .PHONY: lint
-lint: $(GOBIN)/staticcheck
-	staticcheck ./...
+lint: $(GOBIN)/golangci-lint
+	golangci-lint run ./...
 
-$(GOBIN)/staticcheck:
-	go install honnef.co/go/tools/cmd/staticcheck@latest
+$(GOBIN)/golangci-lint:
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 .PHONY: fmt
 fmt:
