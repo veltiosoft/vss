@@ -18,6 +18,8 @@
   - @zztkm
 - [UPDATE] パッケージ構成をフラットパッケージに変更しました
   - @zztkm
+- [UPDATE] GitHub Actions に ci.yaml を追加しました
+  - @zztkm
 
 ## v0.11.0
 
