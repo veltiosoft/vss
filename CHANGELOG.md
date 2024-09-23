@@ -9,6 +9,12 @@
 - FIX
     - バグ修正
 
+## main
+
+### misc
+
+- [UPDATE] パッケージ構成をフラットパッケージに変更しました
+
 ## v0.11.0
 
 - [FIX] vss self update の最後に実行する `vss self version` が失敗する問題を修正しました
