@@ -59,7 +59,11 @@ func (c *ServeCommand) Run(args []string) int {
 	}
 
 	// watch for changes
-	go c.watch()
+	go func() {
+		if err := c.watch(); err != nil {
+			log.Printf("[ERROR] watch: %s", err)
+		}
+	}()
 
 	fs := http.FileServer(htmlDir{http.Dir(config.Dist)})
 	http.Handle("/", http.StripPrefix("/", fs))
@@ -108,7 +112,12 @@ func (c *ServeCommand) watch() error {
 					continue
 				}
 				log.Println("[INFO] modified file:", event.Name)
-				c.builder.ReloadConfig()
+				err = c.builder.ReloadConfig()
+				if err != nil {
+					log.Printf("[ERROR] %s", err)
+					return err
+				}
+
 				c.builder.SetBaseUrl("http://localhost:" + port)
 				err = c.builder.Run()
 				if err != nil {

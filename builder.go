@@ -391,7 +391,10 @@ func (b *Builder) initGoldmark() goldmark.Markdown {
 func createDistFile(dist string) (*os.File, error) {
 	dir := filepath.Dir(dist)
 	if !existDir(dir) {
-		os.MkdirAll(dir, os.ModePerm)
+		err := os.MkdirAll(dir, os.ModePerm)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return os.Create(dist)
 }
