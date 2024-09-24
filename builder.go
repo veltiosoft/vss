@@ -119,15 +119,9 @@ func (b Builder) Run() error {
 
 func (b Builder) purgeIgnoreFiles(files []string) []string {
 	var res []string
-	println("IgnoreFiles:")
-	for _, ignoreFile := range b.config.Build.IgnoreFiles {
-		println(ignoreFile)
-	}
-	println("IgnoreFiles end")
 	for _, path := range files {
 		// path からファイル名を取得
 		name := filepath.Base(path)
-		println(name)
 		// name が IgnoreFiles に含まれているかを確認し、含まれている場合は削除
 		if slices.Contains(b.config.Build.IgnoreFiles, name) {
 			continue
