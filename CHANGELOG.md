@@ -11,6 +11,11 @@
 
 ## main
 
+## v0.11.1
+
+- [FIX] ignore_files の設定が機能していなかった問題を修正しました
+  - @zztkm
+
 ### misc
 
 - [CHANGE] organization を vssio から veltiosoft に変更しました
