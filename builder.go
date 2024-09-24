@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -70,6 +71,7 @@ func (b Builder) Run() error {
 	if err != nil {
 		return err
 	}
+	markdownFiles = b.purgeIgnoreFiles(markdownFiles)
 	log.Printf("[INFO] found %d markdown files\n", len(markdownFiles))
 
 	templateFiles, err := getFilePathsByExt(b.config.Layouts, ".html")
@@ -113,6 +115,26 @@ func (b Builder) Run() error {
 		}
 	}
 	return nil
+}
+
+func (b Builder) purgeIgnoreFiles(files []string) []string {
+	var res []string
+	println("IgnoreFiles:")
+	for _, ignoreFile := range b.config.Build.IgnoreFiles {
+		println(ignoreFile)
+	}
+	println("IgnoreFiles end")
+	for _, path := range files {
+		// path からファイル名を取得
+		name := filepath.Base(path)
+		println(name)
+		// name が IgnoreFiles に含まれているかを確認し、含まれている場合は削除
+		if slices.Contains(b.config.Build.IgnoreFiles, name) {
+			continue
+		}
+		res = append(res, path)
+	}
+	return res
 }
 
 // renderContent renders the markdown file and writes the result to the dist directory.

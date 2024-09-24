@@ -21,7 +21,7 @@ type GoldMarkConfig struct {
 }
 
 type BuildConfig struct {
-	IgnoreFiles []string
+	IgnoreFiles []string       `toml:"ignore_files"`
 	Goldmark    GoldMarkConfig `toml:"goldmark"`
 }
 
