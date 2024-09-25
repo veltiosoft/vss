@@ -11,6 +11,14 @@
 
 ## main
 
+## v0.12.0
+
+- [UPDATE] ビルド設定に `build.goldmark.renderer` を追加しました
+  - 現在サポートするオプションは `with_unsafe` のみ
+  - `with_unsafe` は `true` または `false` を指定できる
+  - `true` にすると、生の HTML せずにそのままレンダリングする
+  - 詳しくは [goldmark のドキュメント](https://github.com/yuin/goldmark?tab=readme-ov-file#html-renderer-options) を参照
+
 ## v0.11.1
 
 - [FIX] ignore_files の設定が機能していなかった問題を修正しました

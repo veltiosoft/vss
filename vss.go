@@ -6,7 +6,7 @@ import (
 	"github.com/mitchellh/cli"
 )
 
-const version = "0.11.1"
+const version = "0.12.0"
 
 var revision = "HEAD"
 
