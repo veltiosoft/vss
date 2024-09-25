@@ -13,11 +13,16 @@ type GoldMarkHighlightConfig struct {
 	WithNumbers *bool `toml:"with_numbers"`
 }
 
+type GoldMarkRendererOptions struct {
+	WithUnsafe *bool `toml:"with_unsafe"`
+}
+
 // GoldMarkConfig is a struct for configuring goldmark.
 // なぜ Pointer なのか？
 // config file にキーを設定したかどうかを判定するため
 type GoldMarkConfig struct {
 	HighlightConfig *GoldMarkHighlightConfig `toml:"highlight"`
+	RendererOptions *GoldMarkRendererOptions `toml:"renderer"`
 }
 
 type BuildConfig struct {

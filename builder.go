@@ -17,6 +17,8 @@ import (
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/renderer"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 // Builder is a struct for building a static site.
@@ -382,6 +384,7 @@ func (b *Builder) initGoldmark() goldmark.Markdown {
 		// default extensions
 		extension.GFM,
 	}
+	rendererOptions := []renderer.Option{}
 	highlightoptions := []highlighting.Option{}
 	if b.config.Build.Goldmark.HighlightConfig != nil {
 		if b.config.Build.Goldmark.HighlightConfig.Style != nil {
@@ -399,8 +402,18 @@ func (b *Builder) initGoldmark() goldmark.Markdown {
 	if len(highlightoptions) > 0 {
 		extensions = append(extensions, highlighting.NewHighlighting(highlightoptions...))
 	}
+
+	// renderer options を設定
+	if b.config.Build.Goldmark.RendererOptions != nil {
+		if b.config.Build.Goldmark.RendererOptions.WithUnsafe != nil {
+			if *b.config.Build.Goldmark.RendererOptions.WithUnsafe {
+				rendererOptions = append(rendererOptions, html.WithUnsafe())
+			}
+		}
+	}
 	return goldmark.New(
 		goldmark.WithExtensions(extensions...),
+		goldmark.WithRendererOptions(rendererOptions...),
 	)
 }
 
