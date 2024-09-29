@@ -11,6 +11,11 @@
 
 ## main
 
+## v0.13.0
+
+- [CHANGE] LICENSE を Apache License 2.0 に変更
+  - @zztkm
+
 ## v0.12.0
 
 - [UPDATE] ビルド設定に `build.goldmark.renderer` を追加しました
