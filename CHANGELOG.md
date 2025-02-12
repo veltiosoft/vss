@@ -11,6 +11,11 @@
 
 ## main
 
+## v0.14.0
+
+- [UPDATE] 依存関係をアップデート
+  - @zztkm
+
 ## v0.13.0
 
 - [CHANGE] LICENSE を Apache License 2.0 に変更
