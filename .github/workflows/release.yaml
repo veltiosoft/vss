@@ -8,18 +8,15 @@ on:
 jobs:
   release:
     name: Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-    # ワークフロー可視化用
-    - uses: Kesin11/actions-timeline@v1
-
     - name: Checkout code
-      uses: actions/checkout@v4
-    - uses: actions/setup-go@v4
+      uses: actions/checkout@v5
+    - uses: actions/setup-go@v6
       id: setup-go
       with:
         go-version-file: "go.mod"
-        
+
     - name: Download go modules
       shell: bash
       if: ${{ steps.setup-go.outputs.cache-hit != 'true' }}
