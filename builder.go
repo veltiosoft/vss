@@ -140,7 +140,7 @@ func (b Builder) renderContent(markdownPath string) error {
 	if err != nil {
 		return err
 	}
-	defer distFile.Close()
+	defer func() { _ = distFile.Close() }()
 	template, err := b.lookUpTemplate(htmlPath)
 	if err != nil {
 		return err
@@ -165,7 +165,7 @@ func (b Builder) renderContent(markdownPath string) error {
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		if err := filedata.FrontMatter.SaveTwemojiPng(file); err != nil {
 			return err
 		}
@@ -313,13 +313,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	_, err = io.Copy(dstFile, srcFile)
 	if err != nil {

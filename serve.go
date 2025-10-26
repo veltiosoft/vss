@@ -92,7 +92,7 @@ func (c *ServeCommand) watch() error {
 	if err != nil {
 		return err
 	}
-	defer watcher.Close()
+	defer func() { _ = watcher.Close() }()
 
 	for _, dir := range dirs {
 		err = watcher.Add(dir)

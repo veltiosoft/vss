@@ -108,7 +108,7 @@ func cliConfigFile() (string, error) {
 
 	f, err := os.Open(configFilePath)
 	if err == nil {
-		f.Close()
+		_ = f.Close()
 		return configFilePath, nil
 	} else {
 		return "", err

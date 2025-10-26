@@ -52,7 +52,7 @@ func (c *SelfUpdateCommand) Run(args []string) int {
 		log.Printf("[ERROR] %s", err)
 		return 1
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[ERROR] %s", resp.Status)
@@ -111,7 +111,7 @@ func extractTgz(resp *http.Response) (io.Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 
 	// Create a tar reader
 	tr := tar.NewReader(gr)
