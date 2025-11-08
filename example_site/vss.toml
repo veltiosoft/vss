@@ -1,0 +1,7 @@
+site_title = "Example Site"
+site_description = "An example site built with vss"
+base_url = "https://example.com"
+
+[build]
+ignore_files = ["README.md"]
+

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{title}} - {{site_title}}</title>
+    <meta name="description" content="{{description}}">
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prism-themes@1.9.0/themes/prism-atom-dark.min.css">
+</head>
+<body>
+    <header>
+        <h1>{{site_title}}</h1>
+        <p>{{site_description}}</p>
+    </header>
+    <main>
+        {{{contents}}}
+    </main>
+    <footer>
+        <p>&copy; 2025 {{site_title}}</p>
+        {{#author}}
+        <p>Author: {{author}}</p>
+        {{/author}}
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/components/prism-core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/components/prism-bash.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/components/prism-rust.min.js"></script>
+</body>
+</html>

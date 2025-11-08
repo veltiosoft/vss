@@ -2,47 +2,34 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
 
 jobs:
-
-  test:
-    name: test
+  check:
+    name: Check
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        toolchain: [stable, beta, nightly]
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        id: setup-go
-        with:
-          go-version-file: "go.mod"
+      - name: Checkout sources
+        uses: actions/checkout@v5
+      - run: rustup update ${{ matrix.toolchain }}
+      - run: cargo check --all
 
-      - name: Download go modules
-        shell: bash
-        if: ${{ steps.setup-go.outputs.cache-hit != 'true' }}
-        run: go mod download
-
-      - run: go test -shuffle=on -v ./...
-
-  golangci:
-    name: lint
+  lints:
+    name: Lints
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        toolchain: [stable, beta, nightly]
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        id: setup-go
-        with:
-          go-version-file: "go.mod"
+      - name: Checkout sources
+        uses: actions/checkout@v5
+      - run: rustup update ${{ matrix.toolchain }}
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all -- -D warnings
 
-      - name: Download go modules
-        shell: bash
-        if: ${{ steps.setup-go.outputs.cache-hit != 'true' }}
-        run: go mod download
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.1
