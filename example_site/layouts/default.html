@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{title}} - {{site_title}}</title>
+    <meta name="description" content="{{description}}">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>{{site_title}}</h1>
+        <p>{{site_description}}</p>
+    </header>
+    <main>
+        {{{contents}}}
+    </main>
+    <footer>
+        <p>&copy; 2025 {{site_title}}</p>
+        {{#author}}
+        <p>Author: {{author}}</p>
+        {{/author}}
+    </footer>
+</body>
+</html>
