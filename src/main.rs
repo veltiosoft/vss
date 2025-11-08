@@ -27,7 +27,7 @@ fn main() -> noargs::Result<()> {
     if BUILD_COMMAND.take(&mut args).is_present() {
         vss::subcommand_build::run(args)?;
     } else if SERVE_COMMAND.take(&mut args).is_present() {
-        todo!();
+        vss::subcommand_serve::run(args)?;
     } else if NEW_COMMAND.take(&mut args).is_present() {
         todo!();
     } else if let Some(help) = args.finish()? {

@@ -243,7 +243,7 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
 }
 
 /// 実際のビルド処理
-fn run_build(config_path: &Path) -> Result<()> {
+pub fn run_build(config_path: &Path) -> Result<()> {
     // 1. 設定ファイルを読み込む
     let config = load_config(config_path)?;
 
