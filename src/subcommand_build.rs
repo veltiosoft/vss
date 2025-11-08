@@ -1,13 +1,13 @@
+use anyhow::{Context, Result};
+use glob::glob;
+use ramhorns::Content;
+use serde::Deserialize;
 use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
     time::Instant,
 };
-use anyhow::{Context, Result};
-use glob::glob;
-use ramhorns::Content;
-use serde::Deserialize;
 
 /// vss.toml の設定構造
 #[derive(Debug, Deserialize)]
@@ -187,13 +187,19 @@ fn copy_static_files(static_dir: &str, dist_dir: &str) -> Result<()> {
 
                 // 親ディレクトリを作成
                 if let Some(parent) = dest_path.parent() {
-                    fs::create_dir_all(parent)
-                        .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+                    fs::create_dir_all(parent).with_context(|| {
+                        format!("Failed to create directory: {}", parent.display())
+                    })?;
                 }
 
                 // ファイルをコピー
-                fs::copy(&src_path, &dest_path)
-                    .with_context(|| format!("Failed to copy file from {} to {}", src_path.display(), dest_path.display()))?;
+                fs::copy(&src_path, &dest_path).with_context(|| {
+                    format!(
+                        "Failed to copy file from {} to {}",
+                        src_path.display(),
+                        dest_path.display()
+                    )
+                })?;
             }
         }
     }
@@ -247,15 +253,18 @@ fn run_build(config_path: &Path) -> Result<()> {
     copy_static_files(&config.r#static, &config.dist)?;
 
     // 4. Markdown ファイルを検索
-    let md_files = find_files_with_glob("md")
-        .context("Failed to find markdown files")?;
+    let md_files = find_files_with_glob("md").context("Failed to find markdown files")?;
 
     // 5. ignore_files でフィルタリング
     let md_files: Vec<PathBuf> = md_files
         .into_iter()
         .filter(|path| {
             let path_str = path.to_string_lossy();
-            !config.build.ignore_files.iter().any(|ignore| path_str.contains(ignore))
+            !config
+                .build
+                .ignore_files
+                .iter()
+                .any(|ignore| path_str.contains(ignore))
         })
         .collect();
 
@@ -328,7 +337,6 @@ fn process_markdown_file(
     Ok(())
 }
 
-
 fn find_files_with_glob(extension: &str) -> Result<Vec<PathBuf>, glob::PatternError> {
     // ** は任意の深さのディレクトリ、* は任意のファイル名にマッチ
     let pattern = format!("**/*.{}", extension);
@@ -342,10 +350,9 @@ fn find_files_with_glob(extension: &str) -> Result<Vec<PathBuf>, glob::PatternEr
                 if path.is_file() {
                     files.push(path);
                 }
-            },
+            }
             Err(e) => eprintln!("Error processing glob entry: {:?}", e),
         }
     }
     Ok(files)
 }
-
