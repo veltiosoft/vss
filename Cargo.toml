@@ -1,0 +1,8 @@
+[package]
+name = "vss"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+markdown = "1.0.0"
+noargs = "0.4.1"

@@ -7,3 +7,7 @@ vss
 # draw.io
 *.drawio.bkp
 *.drawio.dtmp
+
+# Added by cargo
+
+/target
