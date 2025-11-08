@@ -4,3 +4,4 @@ base_url = "https://example.com"
 
 [build]
 ignore_files = ["README.md"]
+

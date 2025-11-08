@@ -51,3 +51,7 @@ fn main() {
 | Static files      | ✓      |
 | Frontmatter       | ✓      |
 
+### Page Link
+
+[First blog post](/posts/first)
+
