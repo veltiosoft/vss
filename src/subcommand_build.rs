@@ -64,6 +64,7 @@ struct FrontMatter {
     #[serde(default)]
     post_slug: String,
     #[serde(default)]
+    #[allow(dead_code)]
     tags: Vec<String>,
 }
 
