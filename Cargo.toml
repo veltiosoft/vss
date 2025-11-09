@@ -13,6 +13,7 @@ noargs = "0.4.1"
 notify = "6.0"
 notify-debouncer-mini = "0.4"
 ramhorns = "0.14"
+self_update = { version = "0.41", default-features = false, features = ["archive-tar", "archive-zip", "compression-flate2", "compression-zip-deflate", "rustls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 tokio = { version = "1.0", features = ["full"] }
