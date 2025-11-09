@@ -57,15 +57,13 @@ fi
 if [ ext = "zip" ]; then
 	curl --fail --location --progress-bar --output "$exe.zip" "$vss_uri"
 	unzip -d "$bin_dir" -o "$exe.zip"
-	cp "${exe}_${target}/vss" "$bin_dir"
 	chmod +x "$exe"
-	rm -rf "$exe.zip" "${exe}_${target}"
+	rm -rf "$exe.zip"
 else
 	curl --fail --location --progress-bar --output "$exe.tar.gz" "$vss_uri"
 	tar -xvf "$exe.tar.gz" -C "$bin_dir"
-	cp "${exe}_${target}/vss" "$bin_dir"
 	chmod +x "$exe"
-	rm -rf "$exe.tar.gz" "${exe}_${target}"
+	rm "$exe.tar.gz"
 fi
 
 
