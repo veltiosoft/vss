@@ -2,8 +2,7 @@ pub mod update;
 pub mod version;
 
 const UPDATE_COMMAND: noargs::CmdSpec = noargs::cmd("update").doc("最新バージョンに更新します");
-const VERSION_COMMAND: noargs::CmdSpec =
-    noargs::cmd("version").doc("バージョン情報を表示します");
+const VERSION_COMMAND: noargs::CmdSpec = noargs::cmd("version").doc("バージョン情報を表示します");
 
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
     if UPDATE_COMMAND.take(&mut args).is_present() {
