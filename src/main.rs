@@ -9,6 +9,7 @@ const SERVE_COMMAND: noargs::CmdSpec =
     noargs::cmd("serve").doc("ファイルの変更を検知して自動ビルドを行います");
 const NEW_COMMAND: noargs::CmdSpec =
     noargs::cmd("new").doc("サイトのテンプレートプロジェクトを生成します");
+const SELF_COMMAND: noargs::CmdSpec = noargs::cmd("self").doc("セルフアップデート関連のコマンド");
 
 fn main() -> noargs::Result<()> {
     let mut args = noargs::raw_args();
@@ -30,6 +31,8 @@ fn main() -> noargs::Result<()> {
         vss::subcommand_serve::run(args)?;
     } else if NEW_COMMAND.take(&mut args).is_present() {
         todo!();
+    } else if SELF_COMMAND.take(&mut args).is_present() {
+        vss::subcommand_self::run(args)?;
     } else if let Some(help) = args.finish()? {
         print!("{help}");
     }

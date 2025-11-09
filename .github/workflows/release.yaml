@@ -3,32 +3,129 @@ name: Release
 on:
   push:
     tags:
-    - 'v*'
+      - "*"
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  release:
-    name: Release
+  github-release:
+    name: "Create GitHub Release"
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-    - uses: actions/setup-go@v6
-      id: setup-go
-      with:
-        go-version-file: "go.mod"
+      - name: Checkout sources
+        uses: actions/checkout@v5
 
-    - name: Download go modules
-      shell: bash
-      if: ${{ steps.setup-go.outputs.cache-hit != 'true' }}
-      run: go mod download
+      - name: Get the version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
 
-    - name: Cross build
-      run: make cross
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ steps.get_version.outputs.VERSION }} \
+            --title "${{ steps.get_version.outputs.VERSION }}" \
+            --generate-notes
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        generate_release_notes: true
-        files: |
-          goxz/*
+  build:
+    name: Build for ${{ matrix.platform.target }}
+    needs: github-release
+    runs-on: ${{ matrix.platform.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          # Linux x86_64
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            os_name: linux
+            arch_name: amd64
+            archive_ext: tar.gz
+
+          # Linux aarch64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            os_name: linux
+            arch_name: arm64
+            archive_ext: tar.gz
+
+          # macOS aarch64 (Apple Silicon)
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            os_name: darwin
+            arch_name: arm64
+            archive_ext: tar.gz
+
+          # Windows x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            os_name: windows
+            arch_name: amd64
+            archive_ext: zip
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+
+      - name: Get commit hash
+        id: get_commit
+        shell: bash
+        run: |
+          COMMIT=$(git rev-parse --short HEAD)
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "Commit: $COMMIT"
+
+      - name: Build
+        shell: bash
+        run: cargo build --release --target ${{ matrix.platform.target }}
+        env:
+          VSS_COMMIT: ${{ steps.get_commit.outputs.commit }}
+
+      - name: Prepare binary (Unix)
+        if: matrix.platform.archive_ext == 'tar.gz'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.platform.target }}/release/vss dist/
+          chmod +x dist/vss
+
+      - name: Prepare binary (Windows)
+        if: matrix.platform.os_name == 'windows'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.platform.target }}/release/vss.exe dist/
+
+      - name: Create tar.gz archive
+        if: matrix.platform.archive_ext == 'tar.gz'
+        shell: bash
+        run: |
+          cd dist
+          tar czf ../vss_${{ matrix.platform.os_name }}_${{ matrix.platform.arch_name }}.tar.gz vss
+          cd ..
+
+      - name: Create zip archive
+        if: matrix.platform.archive_ext == 'zip'
+        shell: bash
+        run: |
+          cd dist
+          7z a ../vss_${{ matrix.platform.os_name }}_${{ matrix.platform.arch_name }}.zip vss.exe
+          cd ..
+
+      - name: Upload Release Asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release upload ${{ needs.github-release.outputs.version }} \
+            vss_${{ matrix.platform.os_name }}_${{ matrix.platform.arch_name }}.${{ matrix.platform.archive_ext }}
+
