@@ -9,8 +9,7 @@ const SERVE_COMMAND: noargs::CmdSpec =
     noargs::cmd("serve").doc("ファイルの変更を検知して自動ビルドを行います");
 const NEW_COMMAND: noargs::CmdSpec =
     noargs::cmd("new").doc("サイトのテンプレートプロジェクトを生成します");
-const SELF_COMMAND: noargs::CmdSpec =
-    noargs::cmd("self").doc("セルフアップデート関連のコマンド");
+const SELF_COMMAND: noargs::CmdSpec = noargs::cmd("self").doc("セルフアップデート関連のコマンド");
 
 fn main() -> noargs::Result<()> {
     let mut args = noargs::raw_args();
