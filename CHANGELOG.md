@@ -13,7 +13,6 @@
 
 ### misc
 
-
 - [UPDATE] `.github/workflows/update-docs.yaml` で利用する vss バイナリの取得は GitHub Release の latest から取得するように変更する
   - Go 実装のときにはビルド速度のおかげでドキュメント更新も時間がかからなかったが、Rust でのビルドには以前より時間がかかる
   - そのため、毎回ビルドするより latest から取得してくるようにした
