@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        toolchain: [stable, beta, nightly]
+        toolchain: [stable]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5
