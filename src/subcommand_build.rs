@@ -116,17 +116,10 @@ fn parse_frontmatter(content: &str) -> Result<(FrontMatter, String)> {
 
 /// Markdown を HTML に変換する
 fn markdown_to_html(markdown: &str, allow_dangerous_html: bool) -> Result<String> {
-    let options = if allow_dangerous_html {
-        markdown::Options {
-            compile: markdown::CompileOptions {
-                allow_dangerous_html: true,
-                ..markdown::CompileOptions::gfm()
-            },
-            ..markdown::Options::gfm()
-        }
-    } else {
-        markdown::Options::gfm()
-    };
+    let mut options = markdown::Options::gfm();
+    if allow_dangerous_html {
+        options.compile.allow_dangerous_html = true;
+    }
 
     markdown::to_html_with_options(markdown, &options)
         .map_err(|e| anyhow::anyhow!("Failed to convert markdown to HTML: {}", e))
