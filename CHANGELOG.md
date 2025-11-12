@@ -11,6 +11,11 @@
 
 ## main
 
+- [ADD] 設定に `build.markdown.allow_dangerous_html` を追加する
+  - この設定は vss が依存する markdown-rs の `allow_dangerous_html` を有効化するためのオプション
+  - `allow_dangerous_html` に関するセキュリティリスクについては https://github.com/wooorm/markdown-rs/tree/1.0.0?tab=readme-ov-file#security を確認
+  - @zztkm
+
 ### misc
 
 - [UPDATE] `.github/workflows/update-docs.yaml` で利用する vss バイナリの取得は GitHub Release の latest から取得するように変更する

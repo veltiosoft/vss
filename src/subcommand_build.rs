@@ -32,6 +32,14 @@ struct Config {
 struct BuildConfig {
     #[serde(default)]
     ignore_files: Vec<String>,
+    #[serde(default)]
+    markdown: MarkdownConfig,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct MarkdownConfig {
+    #[serde(default)]
+    allow_dangerous_html: bool,
 }
 
 fn default_site_title() -> String {
@@ -107,8 +115,13 @@ fn parse_frontmatter(content: &str) -> Result<(FrontMatter, String)> {
 }
 
 /// Markdown を HTML に変換する
-fn markdown_to_html(markdown: &str) -> Result<String> {
-    markdown::to_html_with_options(markdown, &markdown::Options::gfm())
+fn markdown_to_html(markdown: &str, allow_dangerous_html: bool) -> Result<String> {
+    let mut options = markdown::Options::gfm();
+    if allow_dangerous_html {
+        options.compile.allow_dangerous_html = true;
+    }
+
+    markdown::to_html_with_options(markdown, &options)
         .map_err(|e| anyhow::anyhow!("Failed to convert markdown to HTML: {}", e))
 }
 
@@ -294,7 +307,10 @@ fn process_markdown_file(
     let (frontmatter, markdown_content) = parse_frontmatter(&content)?;
 
     // Markdown を HTML に変換
-    let html_content = markdown_to_html(&markdown_content)?;
+    let html_content = markdown_to_html(
+        &markdown_content,
+        config.build.markdown.allow_dangerous_html,
+    )?;
 
     // 出力パスを決定（.md → .html）
     let html_path = md_path.with_extension("html");
