@@ -511,7 +511,9 @@ fn generate_tag_pages(
         // 指定された url_pattern が `/` で終わらない場合は `/tags/{tag}.html` のような path が
         // 指定されていると仮定して、`index.html` を path に結合しない
         let output_path = if relative_path.ends_with('/') {
-            Path::new(&config.dist).join(relative_path).join("index.html")
+            Path::new(&config.dist)
+                .join(relative_path)
+                .join("index.html")
         } else {
             Path::new(&config.dist).join(relative_path)
         };
