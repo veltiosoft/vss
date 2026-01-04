@@ -20,7 +20,7 @@
             <li class="post-item">
                 <h2><a href="{{url}}">{{title}}</a></h2>
                 {{#pub_datetime}}
-                <p class="post-meta"><time>{{pub_datetime}}</time>{{#author}} by {{author}}{{/author}}</p>
+                <p class="post-meta"><time datetime="{{pub_datetime}}">{{pub_datetime}}</time>{{#author}} by {{author}}{{/author}}</p>
                 {{/pub_datetime}}
                 {{#description}}
                 <p class="post-description">{{description}}</p>
