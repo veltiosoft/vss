@@ -4,5 +4,4 @@ fmt:
 	cargo fmt --all
 
 lint:
-	cargo clippy --all
-
+	cargo clippy --all -- -D warnings
