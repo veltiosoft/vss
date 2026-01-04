@@ -506,9 +506,16 @@ fn generate_tag_pages(
         // 出力先（設定のurl_patternから生成）
         // url_pattern: "/tags/{tag}/" -> output: "dist/tags/{tag}/index.html"
         let tag_path_str = config.build.tags.url_pattern.replace("{tag}", &tag_name);
-        let tag_path = tag_path_str.trim_start_matches('/').trim_end_matches('/');
+        let relative_path = tag_path_str.trim_start_matches('/');
 
-        let output_path = Path::new(&config.dist).join(tag_path).join("index.html");
+        // 指定された url_pattern が `/` で終わらない場合は `/tags/{tag}.html` のような path が
+        // 指定されていると仮定して、`index.html` を path に結合しない
+        let output_path = if relative_path.ends_with('/') {
+            let tag_path = tag_path_str.trim_start_matches('/').trim_end_matches('/');
+            Path::new(&config.dist).join(tag_path).join("index.html")
+        } else {
+            Path::new(&config.dist).join(relative_path)
+        };
 
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)
