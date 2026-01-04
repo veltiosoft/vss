@@ -11,6 +11,10 @@
 
 ## main
 
+- [ADD] tag ページ生成機能 (仮) を追加する
+  - 実験的機能であるため、破壊的変更が行われる可能性があることに注意
+  - @zztkm
+
 ## v0.17.0
 
 - [ADD] 設定に `build.markdown.allow_dangerous_html` を追加する

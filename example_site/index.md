@@ -63,3 +63,10 @@ fn main() {
 
 [First blog post](/posts/first)
 
+## Browse by Tag
+
+- [blog posts](/tags/blog/)
+- [examples](/tags/example/)
+- [tutorials](/tags/tutorial/)
+- [rust content](/tags/rust/)
+

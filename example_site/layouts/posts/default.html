@@ -16,6 +16,14 @@
     <main>
         {{{contents}}}
     </main>
+    <div class="tags-section">
+        <h3>Tags</h3>
+        <ul class="tag-list">
+            {{#tags}}
+            <li><a href="{{url}}" class="tag-link">{{name}}</a></li>
+            {{/tags}}
+        </ul>
+    </div>
     <footer>
         <p>&copy; 2025 {{site_title}}</p>
         {{#author}}
