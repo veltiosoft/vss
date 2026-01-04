@@ -106,7 +106,7 @@ struct FrontMatter {
     #[serde(default)]
     post_slug: String,
     #[serde(default)]
-    tags: Vec<String>,
+    tags: Option<Vec<String>>,
 }
 
 /// テンプレートレンダリング用のコンテキスト
@@ -121,6 +121,7 @@ struct RenderContext {
     author: String,
     pub_datetime: String,
     post_slug: String,
+    has_tags: bool,
     tags: Vec<Tag>,
 }
 
@@ -139,7 +140,7 @@ struct PostMetadata {
     author: String,
     pub_datetime: String,
     url: String,
-    tags: Vec<String>,
+    tags: Option<Vec<String>>,
 }
 
 /// タグページのレンダリングコンテキスト
@@ -399,14 +400,20 @@ fn process_markdown_file(
     // タグ構造体を作成（url_pattern を使用）
     let tags: Vec<Tag> = frontmatter
         .tags
-        .iter()
-        .map(|tag_name| Tag {
-            name: tag_name.clone(),
-            url: config.build.tags.url_pattern.replace("{tag}", tag_name),
+        .as_ref()
+        .map(|tags_vec| {
+            tags_vec
+                .iter()
+                .map(|tag_name| Tag {
+                    name: tag_name.clone(),
+                    url: config.build.tags.url_pattern.replace("{tag}", tag_name),
+                })
+                .collect()
         })
-        .collect();
+        .unwrap_or_default();
 
     // レンダリングコンテキストを構築
+    let has_tags = !tags.is_empty();
     let context = RenderContext {
         site_title: config.site_title.clone(),
         site_description: config.site_description.clone(),
@@ -417,6 +424,7 @@ fn process_markdown_file(
         author: frontmatter.author.clone(),
         pub_datetime: frontmatter.pub_datetime.clone(),
         post_slug: frontmatter.post_slug.clone(),
+        has_tags,
         tags,
     };
 
@@ -439,19 +447,21 @@ fn process_markdown_file(
     println!("Generated: {}", output_path.display());
 
     // タグがある場合はメタデータを返す
-    let metadata = if !frontmatter.tags.is_empty() {
-        let url = format!("/{}", html_path_str);
-        Some(PostMetadata {
-            title: frontmatter.title,
-            description: frontmatter.description,
-            author: frontmatter.author,
-            pub_datetime: frontmatter.pub_datetime,
-            url,
-            tags: frontmatter.tags,
-        })
-    } else {
-        None
-    };
+    let metadata = frontmatter.tags.as_ref().and_then(|tags_vec| {
+        if !tags_vec.is_empty() {
+            let url = format!("/{}", html_path_str);
+            Some(PostMetadata {
+                title: frontmatter.title,
+                description: frontmatter.description,
+                author: frontmatter.author,
+                pub_datetime: frontmatter.pub_datetime,
+                url,
+                tags: Some(tags_vec.clone()),
+            })
+        } else {
+            None
+        }
+    });
 
     Ok(metadata)
 }
@@ -472,11 +482,13 @@ fn generate_tag_pages(
     let mut tag_to_posts: HashMap<String, Vec<PostMetadata>> = HashMap::new();
 
     for post in all_posts {
-        for tag_name in &post.tags {
-            tag_to_posts
-                .entry(tag_name.clone())
-                .or_default()
-                .push(post.clone());
+        if let Some(tags_vec) = &post.tags {
+            for tag_name in tags_vec {
+                tag_to_posts
+                    .entry(tag_name.clone())
+                    .or_default()
+                    .push(post.clone());
+            }
         }
     }
 
