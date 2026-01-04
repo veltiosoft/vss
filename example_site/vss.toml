@@ -10,3 +10,15 @@ ignore_files = ["README.md"]
 # この設定が false だとコメントアウトは文字列として処理されてしまいます
 allow_dangerous_html = false
 
+[build.tags]
+# タグページ生成を有効化（デフォルト: true）
+enable = true
+
+# 使用するテンプレート（デフォルト: "tags/default.html"）
+template = "tags/default.html"
+
+# タグページのURLパターン（デフォルト: "/tags/{tag}/"）
+# {tag} はタグ名に置き換えられます
+# このパターンが出力先とURLの両方を決定します
+url_pattern = "/tags/{tag}/"
+

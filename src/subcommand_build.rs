@@ -34,12 +34,46 @@ struct BuildConfig {
     ignore_files: Vec<String>,
     #[serde(default)]
     markdown: MarkdownConfig,
+    #[serde(default)]
+    tags: TagsConfig,
 }
 
 #[derive(Debug, Deserialize, Default)]
 struct MarkdownConfig {
     #[serde(default)]
     allow_dangerous_html: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct TagsConfig {
+    #[serde(default = "default_tags_enable")]
+    enable: bool,
+    #[serde(default = "default_tags_template")]
+    template: String,
+    #[serde(default = "default_tags_url_pattern")]
+    url_pattern: String,
+}
+
+impl Default for TagsConfig {
+    fn default() -> Self {
+        Self {
+            enable: default_tags_enable(),
+            template: default_tags_template(),
+            url_pattern: default_tags_url_pattern(),
+        }
+    }
+}
+
+fn default_tags_enable() -> bool {
+    true
+}
+
+fn default_tags_template() -> String {
+    "tags/default.html".to_string()
+}
+
+fn default_tags_url_pattern() -> String {
+    "/tags/{tag}/".to_string()
 }
 
 fn default_site_title() -> String {
@@ -72,8 +106,7 @@ struct FrontMatter {
     #[serde(default)]
     post_slug: String,
     #[serde(default)]
-    #[allow(dead_code)]
-    tags: Vec<String>,
+    tags: Option<Vec<String>>,
 }
 
 /// テンプレートレンダリング用のコンテキスト
@@ -88,6 +121,36 @@ struct RenderContext {
     author: String,
     pub_datetime: String,
     post_slug: String,
+    has_tags: bool,
+    tags: Vec<Tag>,
+}
+
+/// タグ表示用の構造体
+#[derive(Content)]
+struct Tag {
+    name: String,
+    url: String,
+}
+
+/// タグページ生成用の投稿メタデータ
+#[derive(Content, Clone)]
+struct PostMetadata {
+    title: String,
+    description: String,
+    author: String,
+    pub_datetime: String,
+    url: String,
+    tags: Option<Vec<String>>,
+}
+
+/// タグページのレンダリングコンテキスト
+#[derive(Content)]
+struct TagPageContext {
+    site_title: String,
+    site_description: String,
+    base_url: String,
+    tag_name: String,
+    posts: Vec<PostMetadata>,
 }
 
 /// 設定ファイルを読み込む
@@ -285,9 +348,23 @@ pub fn run_build(config_path: &Path) -> Result<()> {
     // 6. テンプレートを読み込む
     let templates = load_templates(&config.layouts)?;
 
-    // 7. 各 Markdown ファイルを処理
+    // 7. 投稿メタデータを収集
+    let mut all_posts: Vec<PostMetadata> = Vec::new();
+
+    // 8. 各 Markdown ファイルを処理
     for md_path in md_files {
-        process_markdown_file(&md_path, &config, &templates)?;
+        let post_metadata = process_markdown_file(&md_path, &config, &templates)?;
+        // タグページ生成が有効な場合のみメタデータを収集
+        if config.build.tags.enable
+            && let Some(metadata) = post_metadata
+        {
+            all_posts.push(metadata);
+        }
+    }
+
+    // 9. タグページを生成
+    if !all_posts.is_empty() {
+        generate_tag_pages(all_posts, &config, &templates)?;
     }
 
     Ok(())
@@ -298,7 +375,7 @@ fn process_markdown_file(
     md_path: &Path,
     config: &Config,
     templates: &HashMap<String, ramhorns::Template<'static>>,
-) -> Result<()> {
+) -> Result<Option<PostMetadata>> {
     // Markdown ファイルを読み込む
     let content = fs::read_to_string(md_path)
         .with_context(|| format!("Failed to read markdown file: {}", md_path.display()))?;
@@ -320,17 +397,35 @@ fn process_markdown_file(
     let template = lookup_template(templates, &html_path_str)
         .context("No template found (default.html is required)")?;
 
+    // タグ構造体を作成（url_pattern を使用）
+    let tags: Vec<Tag> = frontmatter
+        .tags
+        .as_ref()
+        .map(|tags_vec| {
+            tags_vec
+                .iter()
+                .map(|tag_name| Tag {
+                    name: tag_name.clone(),
+                    url: config.build.tags.url_pattern.replace("{tag}", tag_name),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     // レンダリングコンテキストを構築
+    let has_tags = !tags.is_empty();
     let context = RenderContext {
         site_title: config.site_title.clone(),
         site_description: config.site_description.clone(),
         base_url: config.base_url.clone(),
         contents: html_content,
-        title: frontmatter.title,
-        description: frontmatter.description,
-        author: frontmatter.author,
-        pub_datetime: frontmatter.pub_datetime,
-        post_slug: frontmatter.post_slug,
+        title: frontmatter.title.clone(),
+        description: frontmatter.description.clone(),
+        author: frontmatter.author.clone(),
+        pub_datetime: frontmatter.pub_datetime.clone(),
+        post_slug: frontmatter.post_slug.clone(),
+        has_tags,
+        tags,
     };
 
     // テンプレートをレンダリング
@@ -350,6 +445,101 @@ fn process_markdown_file(
         .with_context(|| format!("Failed to write output file: {}", output_path.display()))?;
 
     println!("Generated: {}", output_path.display());
+
+    // タグがある場合はメタデータを返す
+    let metadata = frontmatter.tags.as_ref().and_then(|tags_vec| {
+        if !tags_vec.is_empty() {
+            let url = format!("/{}", html_path_str);
+            Some(PostMetadata {
+                title: frontmatter.title,
+                description: frontmatter.description,
+                author: frontmatter.author,
+                pub_datetime: frontmatter.pub_datetime,
+                url,
+                tags: Some(tags_vec.clone()),
+            })
+        } else {
+            None
+        }
+    });
+
+    Ok(metadata)
+}
+
+/// タグページを生成する（設定を考慮）
+fn generate_tag_pages(
+    all_posts: Vec<PostMetadata>,
+    config: &Config,
+    templates: &HashMap<String, ramhorns::Template<'static>>,
+) -> Result<()> {
+    // タグページ生成が無効な場合は何もしない
+    if !config.build.tags.enable {
+        println!("Tag page generation is disabled in config");
+        return Ok(());
+    }
+
+    // タグごとに投稿をグループ化
+    let mut tag_to_posts: HashMap<String, Vec<PostMetadata>> = HashMap::new();
+
+    for post in all_posts {
+        if let Some(tags_vec) = &post.tags {
+            for tag_name in tags_vec {
+                tag_to_posts
+                    .entry(tag_name.clone())
+                    .or_default()
+                    .push(post.clone());
+            }
+        }
+    }
+
+    // 各タグのページを生成
+    for (tag_name, posts) in tag_to_posts {
+        let context = TagPageContext {
+            site_title: config.site_title.clone(),
+            site_description: config.site_description.clone(),
+            base_url: config.base_url.clone(),
+            tag_name: tag_name.clone(),
+            posts,
+        };
+
+        // テンプレート検索（設定から取得）
+        let template = templates
+            .get(&config.build.tags.template)
+            .with_context(|| {
+                format!(
+                    "Tag template not found: layouts/{}",
+                    config.build.tags.template
+                )
+            })?;
+
+        // レンダリング
+        let rendered = template.render(&context);
+
+        // 出力先（設定のurl_patternから生成）
+        // url_pattern: "/tags/{tag}/" -> output: "dist/tags/{tag}/index.html"
+        let tag_path_str = config.build.tags.url_pattern.replace("{tag}", &tag_name);
+        let relative_path = tag_path_str.trim_start_matches('/');
+
+        // 指定された url_pattern が `/` で終わらない場合は `/tags/{tag}.html` のような path が
+        // 指定されていると仮定して、`index.html` を path に結合しない
+        let output_path = if relative_path.ends_with('/') {
+            Path::new(&config.dist)
+                .join(relative_path)
+                .join("index.html")
+        } else {
+            Path::new(&config.dist).join(relative_path)
+        };
+
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+        }
+
+        fs::write(&output_path, rendered)
+            .with_context(|| format!("Failed to write tag page: {}", output_path.display()))?;
+
+        println!("Generated tag page: {}", output_path.display());
+    }
 
     Ok(())
 }

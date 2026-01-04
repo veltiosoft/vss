@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Posts tagged "{{tag_name}}" - {{site_title}}</title>
+    <meta name="description" content="{{site_description}}">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>{{site_title}}</h1>
+        <p>{{site_description}}</p>
+    </header>
+    <main>
+        <h1>Posts tagged "{{tag_name}}"</h1>
+
+        <ul class="post-list">
+            {{#posts}}
+            <li class="post-item">
+                <h2><a href="{{url}}">{{title}}</a></h2>
+                {{#pub_datetime}}
+                <p class="post-meta"><time datetime="{{pub_datetime}}">{{pub_datetime}}</time>{{#author}} by {{author}}{{/author}}</p>
+                {{/pub_datetime}}
+                {{#description}}
+                <p class="post-description">{{description}}</p>
+                {{/description}}
+            </li>
+            {{/posts}}
+        </ul>
+    </main>
+    <footer>
+        <p>&copy; 2025 {{site_title}}</p>
+    </footer>
+</body>
+</html>

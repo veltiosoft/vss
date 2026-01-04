@@ -96,3 +96,86 @@ footer {
     color: #666;
     font-size: 0.9em;
 }
+
+/* タグ表示 */
+.tags-section {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+
+.tags-section h3 {
+    font-size: 1.2em;
+    margin-bottom: 12px;
+    color: #666;
+}
+
+.tag-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tag-list li {
+    margin: 0;
+}
+
+.tag-link {
+    display: inline-block;
+    padding: 4px 12px;
+    background-color: #007acc;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 0.9em;
+    transition: background-color 0.2s;
+}
+
+.tag-link:hover {
+    background-color: #005a9e;
+}
+
+/* タグページの投稿一覧 */
+.post-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.post-item {
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #eee;
+}
+
+.post-item:last-child {
+    border-bottom: none;
+}
+
+.post-item h2 {
+    margin-top: 0;
+    margin-bottom: 8px;
+}
+
+.post-item h2 a {
+    color: #007acc;
+    text-decoration: none;
+}
+
+.post-item h2 a:hover {
+    text-decoration: underline;
+}
+
+.post-meta {
+    color: #666;
+    font-size: 0.9em;
+    margin-bottom: 8px;
+}
+
+.post-description {
+    color: #555;
+    line-height: 1.6;
+}

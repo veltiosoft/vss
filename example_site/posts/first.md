@@ -4,7 +4,6 @@ description: My first blog post
 author: zztkm
 pub_datetime: 2024-11-08
 post_slug: first-post
-tags: ["blog", "example"]
 ---
 
 # First Post
