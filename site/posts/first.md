@@ -2,6 +2,7 @@
 title: "First release"
 description: "最初のリリース"
 emoji: "🎉"
+tags: ["meta"]
 ---
 
 # First release

@@ -5,6 +5,10 @@ base_url = "https://vss.veltiosoft.dev"
 [build]
 ignore_files = ["README.md"]
 
-[build.goldmark.highlight]
-style = "nord"
-with_numbers = false
+[build.markdown]
+allow_dangerous_html = false
+
+[build.tags]
+enable = true
+template = "tags/default.html"
+url_pattern = "/tags/{tag}/"
