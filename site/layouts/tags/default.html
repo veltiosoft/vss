@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Posts tagged "{{tag_name}}" - {{site_title}}</title>
+    <meta name="description" content="Posts tagged with {{tag_name}} - {{site_description}}">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f9f9f9;
+        }
+
+        header {
+            background-color: #fff;
+            border-bottom: 1px solid #eee;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            color: #666;
+        }
+
+        main {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        main h1 {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            color: #222;
+        }
+
+        .post-list {
+            list-style: none;
+        }
+
+        .post-item {
+            background-color: #fff;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: box-shadow 0.2s;
+        }
+
+        .post-item:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .post-item h2 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .post-item h2 a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        .post-item h2 a:hover {
+            text-decoration: underline;
+        }
+
+        .post-meta {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 0.5rem;
+        }
+
+        .post-description {
+            color: #555;
+            margin-top: 0.5rem;
+        }
+
+        footer {
+            background-color: #fff;
+            border-top: 1px solid #eee;
+            padding: 2rem;
+            text-align: center;
+            color: #666;
+            margin-top: 4rem;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>{{site_title}}</h1>
+        <p>{{site_description}}</p>
+    </header>
+
+    <main>
+        <a href="/" class="back-link">← Back to Home</a>
+
+        <h1>Posts tagged "{{tag_name}}"</h1>
+
+        {{#posts}}
+        <ul class="post-list">
+        {{/posts}}
+            {{#posts}}
+            <li class="post-item">
+                <h2><a href="{{url}}">{{title}}</a></h2>
+                {{#pub_datetime}}
+                <p class="post-meta">
+                    <time datetime="{{pub_datetime}}">{{pub_datetime}}</time>{{#author}} by {{author}}{{/author}}
+                </p>
+                {{/pub_datetime}}
+                {{#description}}
+                <p class="post-description">{{description}}</p>
+                {{/description}}
+            </li>
+            {{/posts}}
+        {{#posts}}
+        </ul>
+        {{/posts}}
+
+        {{^posts}}
+        <p>No posts found with this tag.</p>
+        {{/posts}}
+    </main>
+
+    <footer>
+        <p>&copy; 2025 {{site_title}}</p>
+    </footer>
+</body>
+</html>
