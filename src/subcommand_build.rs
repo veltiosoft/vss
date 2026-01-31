@@ -107,6 +107,27 @@ fn default_layouts() -> String {
     "layouts".to_string()
 }
 
+/// タグ名が安全かどうかを検証する
+/// パストラバーサル攻撃を防ぐため、危険な文字列を含むタグ名を拒否する
+fn is_safe_tag_name(tag: &str) -> bool {
+    // 空のタグ名は不正
+    if tag.is_empty() {
+        return false;
+    }
+
+    // パストラバーサルシーケンスを含む場合は不正
+    if tag.contains("..") || tag.contains('/') || tag.contains('\\') {
+        return false;
+    }
+
+    // null バイトを含む場合は不正
+    if tag.contains('\0') {
+        return false;
+    }
+
+    true
+}
+
 /// YAML frontmatter の構造
 #[derive(Debug, Deserialize, Default)]
 struct FrontMatter {
@@ -511,6 +532,15 @@ fn generate_tag_pages(
 
     // 各タグのページを生成
     for (tag_name, posts) in tag_to_posts {
+        // タグ名の安全性を検証（パストラバーサル攻撃を防ぐ）
+        if !is_safe_tag_name(&tag_name) {
+            eprintln!(
+                "[WARN] Skipping unsafe tag name: {:?} (contains path traversal characters)",
+                tag_name
+            );
+            continue;
+        }
+
         let context = TagPageContext {
             site_title: config.site_title.clone(),
             site_description: config.site_description.clone(),
