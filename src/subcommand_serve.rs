@@ -7,7 +7,7 @@ use axum::{
     response::Response,
 };
 use notify::event::EventKind;
-use notify_debouncer_full::{new_debouncer, notify::RecursiveMode, DebounceEventResult};
+use notify_debouncer_full::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
@@ -134,19 +134,13 @@ fn watch_files(config_path: &Path, _rebuild_flag: Arc<Mutex<bool>>) -> Result<()
         None,
         move |res: DebounceEventResult| match res {
             Ok(events) => {
-                let should_rebuild = events.iter().any(|debounced_event| {
-                    let path = match debounced_event.paths.first() {
-                        Some(p) => p,
-                        None => return false,
-                    };
-
-                    // dist ディレクトリ以下は無視
-                    if path.starts_with(&dist_path) {
+                let should_rebuild = events.iter().any(|event| {
+                    // Access イベント（ls による atime 更新など）は無視
+                    if matches!(event.kind, EventKind::Access(_)) {
                         return false;
                     }
-
-                    // Access イベント（ls による atime 更新など）は無視
-                    !matches!(debounced_event.kind, EventKind::Access(_))
+                    // いずれかのパスが dist ディレクトリ外であれば再ビルド
+                    event.paths.iter().any(|path| !path.starts_with(&dist_path))
                 });
 
                 if should_rebuild {
