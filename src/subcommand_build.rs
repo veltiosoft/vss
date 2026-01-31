@@ -645,12 +645,17 @@ pub(crate) fn delete_output_file(
 /// 1. 完全一致: layouts/{md_path}.html
 /// 2. ディレクトリデフォルト: layouts/{dir}/default.html
 /// 3. ルートデフォルト: layouts/default.html
+///
+/// テンプレートも一緒に返すことで、呼び出し側での再読み込みを避ける
 pub(crate) fn find_markdown_files_using_template(
     template_path: &Path,
     layouts_dir: &str,
     ignore_files: &[String],
-) -> Result<Vec<PathBuf>> {
+) -> Result<(Vec<PathBuf>, HashMap<String, ramhorns::Template<'static>>)> {
     let mut affected_files = Vec::new();
+
+    // テンプレートを読み込む
+    let templates = load_templates(layouts_dir)?;
 
     // テンプレートの相対パス（layouts/ からの相対）
     let template_rel_path = template_path
@@ -659,7 +664,7 @@ pub(crate) fn find_markdown_files_using_template(
         .map(|p| p.to_string_lossy().to_string());
 
     let Some(template_key) = template_rel_path else {
-        return Ok(affected_files);
+        return Ok((affected_files, templates));
     };
 
     // すべての Markdown ファイルを取得
@@ -674,9 +679,6 @@ pub(crate) fn find_markdown_files_using_template(
         })
         .collect();
 
-    // 全テンプレートを読み込んで、どの Markdown ファイルがどのテンプレートを使うか判定
-    let templates = load_templates(layouts_dir)?;
-
     for md_path in md_files {
         let html_path = md_path.with_extension("html");
         let html_path_str = html_path.to_string_lossy().to_string();
@@ -685,14 +687,14 @@ pub(crate) fn find_markdown_files_using_template(
         let used_template_key = determine_template_key(&templates, &html_path_str);
 
         // 変更されたテンプレートを使用しているか確認
-        if let Some(key) = used_template_key {
-            if key == template_key {
-                affected_files.push(md_path);
-            }
+        if let Some(key) = used_template_key
+            && key == template_key
+        {
+            affected_files.push(md_path);
         }
     }
 
-    Ok(affected_files)
+    Ok((affected_files, templates))
 }
 
 /// Markdown ファイルが使用するテンプレートキーを決定する
@@ -721,6 +723,17 @@ fn determine_template_key(
     None
 }
 
+/// 絶対パスを相対パスに変換する
+fn to_relative_path(path: &Path) -> PathBuf {
+    if path.is_absolute()
+        && let Ok(current_dir) = std::env::current_dir()
+        && let Ok(rel) = path.strip_prefix(&current_dir)
+    {
+        return rel.to_path_buf();
+    }
+    path.to_path_buf()
+}
+
 /// 増分ビルドのエントリポイント
 /// 変更されたファイルの種別に応じて最小限の再ビルドを行う
 pub fn run_incremental_build(
@@ -737,11 +750,17 @@ pub fn run_incremental_build(
     let mut all_posts: Vec<PostMetadata> = Vec::new();
     let mut need_regenerate_tags = false;
 
+    // カレントディレクトリを取得（パス正規化用）
+    let current_dir = std::env::current_dir().context("Failed to get current directory")?;
+
     for changed_file in changed_files {
         match changed_file {
             ChangedFile::Markdown(path) => {
+                // 絶対パスを相対パスに変換
+                let rel_path = to_relative_path(path);
+
                 // Markdown ファイルが ignore_files に含まれているかチェック
-                let path_str = path.to_string_lossy();
+                let path_str = rel_path.to_string_lossy();
                 if config
                     .build
                     .ignore_files
@@ -751,8 +770,8 @@ pub fn run_incremental_build(
                     continue;
                 }
 
-                // 単一の Markdown ファイルを処理
-                if let Ok(Some(metadata)) = process_markdown_file(path, &config, &templates) {
+                // 単一の Markdown ファイルを処理（相対パスを使用）
+                if let Ok(Some(metadata)) = process_markdown_file(&rel_path, &config, &templates) {
                     all_posts.push(metadata);
                 }
                 need_regenerate_tags = true;
@@ -763,14 +782,12 @@ pub fn run_incremental_build(
             }
             ChangedFile::Template(path) => {
                 // テンプレート変更時は、そのテンプレートを使用する全 Markdown を再ビルド
-                let affected_md_files = find_markdown_files_using_template(
+                // テンプレートも一緒に取得して再読み込みを避ける
+                let (affected_md_files, fresh_templates) = find_markdown_files_using_template(
                     path,
                     &config.layouts,
                     &config.build.ignore_files,
                 )?;
-
-                // テンプレートを再読み込み
-                let fresh_templates = load_templates(&config.layouts)?;
 
                 for md_path in affected_md_files {
                     if let Ok(Some(metadata)) =
@@ -795,11 +812,25 @@ pub fn run_incremental_build(
 
                 if path_str.ends_with(".md") {
                     // Markdown ファイルの削除
-                    delete_output_file(path, "", &config.dist, Some("html"))?;
+                    // 絶対パスを相対パスに変換してから処理
+                    let rel_path = to_relative_path(path);
+                    let html_path = rel_path.with_extension("html");
+                    let output_path = Path::new(&config.dist).join(&html_path);
+                    if output_path.exists() {
+                        fs::remove_file(&output_path).with_context(|| {
+                            format!("Failed to delete output file: {}", output_path.display())
+                        })?;
+                        println!("Deleted: {}", output_path.display());
+                    }
                     need_regenerate_tags = true;
-                } else if path.starts_with(&config.r#static) {
+                } else if path.starts_with(current_dir.join(&config.r#static)) {
                     // 静的ファイルの削除
-                    delete_output_file(path, &config.r#static, &config.dist, None)?;
+                    delete_output_file(path, &current_dir.join(&config.r#static).to_string_lossy(), &config.dist, None)?;
+                } else if path.starts_with(current_dir.join(&config.layouts)) {
+                    // テンプレートが削除された場合はフルビルドを要求
+                    return Err(anyhow::anyhow!(
+                        "Template file deleted, full rebuild required"
+                    ));
                 }
             }
         }
@@ -824,23 +855,21 @@ pub fn run_incremental_build(
         let mut tag_posts: Vec<PostMetadata> = Vec::new();
         for md_path in &md_files {
             // frontmatter を読み取ってメタデータを収集
-            if let Ok(content) = fs::read_to_string(md_path) {
-                if let Ok((frontmatter, _)) = parse_frontmatter(&content) {
-                    if let Some(tags_vec) = &frontmatter.tags {
-                        if !tags_vec.is_empty() {
-                            let html_path = md_path.with_extension("html");
-                            let url = format!("/{}", html_path.to_string_lossy());
-                            tag_posts.push(PostMetadata {
-                                title: frontmatter.title,
-                                description: frontmatter.description,
-                                author: frontmatter.author,
-                                pub_datetime: frontmatter.pub_datetime,
-                                url,
-                                tags: Some(tags_vec.clone()),
-                            });
-                        }
-                    }
-                }
+            if let Ok(content) = fs::read_to_string(md_path)
+                && let Ok((frontmatter, _)) = parse_frontmatter(&content)
+                && let Some(tags_vec) = &frontmatter.tags
+                && !tags_vec.is_empty()
+            {
+                let html_path = md_path.with_extension("html");
+                let url = format!("/{}", html_path.to_string_lossy());
+                tag_posts.push(PostMetadata {
+                    title: frontmatter.title,
+                    description: frontmatter.description,
+                    author: frontmatter.author,
+                    pub_datetime: frontmatter.pub_datetime,
+                    url,
+                    tags: Some(tags_vec.clone()),
+                });
             }
         }
 

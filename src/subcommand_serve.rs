@@ -123,11 +123,11 @@ async fn html_fallback_middleware(mut request: Request, next: Next) -> Response 
 fn watch_files(config_path: &Path, _rebuild_flag: Arc<Mutex<bool>>) -> Result<()> {
     let config_path_clone = config_path.to_path_buf();
 
-    // 設定を取得
-    let serve_config = get_serve_config(config_path)?;
-    let dist_dir = serve_config.dist.clone();
-    let static_dir = serve_config.r#static.clone();
-    let layouts_dir = serve_config.layouts.clone();
+    // 設定を取得（subcommand_build の load_config を直接使用）
+    let config = subcommand_build::load_config(config_path)?;
+    let dist_dir = config.dist.clone();
+    let static_dir = config.r#static.clone();
+    let layouts_dir = config.layouts.clone();
 
     let current_dir = std::env::current_dir().context("Failed to get current directory")?;
     let dist_path = current_dir.join(&dist_dir);
@@ -189,7 +189,7 @@ fn watch_files(config_path: &Path, _rebuild_flag: Arc<Mutex<bool>>) -> Result<()
                 // 変更されたファイル数を表示
                 let file_count = changed_files.len();
                 let file_desc = if file_count == 1 {
-                    format!("1 file")
+                    "1 file".to_string()
                 } else {
                     format!("{} files", file_count)
                 };
@@ -237,54 +237,8 @@ fn watch_files(config_path: &Path, _rebuild_flag: Arc<Mutex<bool>>) -> Result<()
 
 /// 設定ファイルから dist ディレクトリのパスを取得
 fn get_dist_dir(config_path: &Path) -> Result<String> {
-    let serve_config = get_serve_config(config_path)?;
-    Ok(serve_config.dist)
-}
-
-/// serve コマンド用の設定情報
-#[derive(Debug)]
-struct ServeConfig {
-    dist: String,
-    r#static: String,
-    layouts: String,
-}
-
-/// 設定ファイルから serve コマンドに必要な情報を取得
-fn get_serve_config(config_path: &Path) -> Result<ServeConfig> {
-    use serde::Deserialize;
-
-    #[derive(Debug, Deserialize)]
-    struct Config {
-        #[serde(default = "default_dist")]
-        dist: String,
-        #[serde(default = "default_static")]
-        r#static: String,
-        #[serde(default = "default_layouts")]
-        layouts: String,
-    }
-
-    fn default_dist() -> String {
-        "dist".to_string()
-    }
-
-    fn default_static() -> String {
-        "static".to_string()
-    }
-
-    fn default_layouts() -> String {
-        "layouts".to_string()
-    }
-
-    let content = std::fs::read_to_string(config_path)
-        .with_context(|| format!("Failed to read config file: {}", config_path.display()))?;
-    let config: Config = toml::from_str(&content)
-        .with_context(|| format!("Failed to parse config file: {}", config_path.display()))?;
-
-    Ok(ServeConfig {
-        dist: config.dist,
-        r#static: config.r#static,
-        layouts: config.layouts,
-    })
+    let config = subcommand_build::load_config(config_path)?;
+    Ok(config.dist)
 }
 
 /// 変更されたファイルを分類する
