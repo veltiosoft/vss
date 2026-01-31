@@ -9,49 +9,64 @@ use std::{
     time::Instant,
 };
 
+/// 変更されたファイルの種別
+#[derive(Debug, Clone)]
+pub enum ChangedFile {
+    /// Markdown ファイルの変更
+    Markdown(PathBuf),
+    /// 静的ファイルの変更
+    Static(PathBuf),
+    /// テンプレートファイルの変更
+    Template(PathBuf),
+    /// 設定ファイルの変更
+    Config,
+    /// ファイル削除
+    Deleted(PathBuf),
+}
+
 /// vss.toml の設定構造
 #[derive(Debug, Deserialize)]
-struct Config {
+pub(crate) struct Config {
     #[serde(default = "default_site_title")]
-    site_title: String,
+    pub(crate) site_title: String,
     #[serde(default)]
-    site_description: String,
+    pub(crate) site_description: String,
     #[serde(default)]
-    base_url: String,
+    pub(crate) base_url: String,
     #[serde(default = "default_dist")]
-    dist: String,
+    pub(crate) dist: String,
     #[serde(default = "default_static")]
-    r#static: String,
+    pub(crate) r#static: String,
     #[serde(default = "default_layouts")]
-    layouts: String,
+    pub(crate) layouts: String,
     #[serde(default)]
-    build: BuildConfig,
+    pub(crate) build: BuildConfig,
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct BuildConfig {
+pub(crate) struct BuildConfig {
     #[serde(default)]
-    ignore_files: Vec<String>,
+    pub(crate) ignore_files: Vec<String>,
     #[serde(default)]
-    markdown: MarkdownConfig,
+    pub(crate) markdown: MarkdownConfig,
     #[serde(default)]
-    tags: TagsConfig,
+    pub(crate) tags: TagsConfig,
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct MarkdownConfig {
+pub(crate) struct MarkdownConfig {
     #[serde(default)]
-    allow_dangerous_html: bool,
+    pub(crate) allow_dangerous_html: bool,
 }
 
 #[derive(Debug, Deserialize)]
-struct TagsConfig {
+pub(crate) struct TagsConfig {
     #[serde(default = "default_tags_enable")]
-    enable: bool,
+    pub(crate) enable: bool,
     #[serde(default = "default_tags_template")]
-    template: String,
+    pub(crate) template: String,
     #[serde(default = "default_tags_url_pattern")]
-    url_pattern: String,
+    pub(crate) url_pattern: String,
 }
 
 impl Default for TagsConfig {
@@ -134,7 +149,7 @@ struct Tag {
 
 /// タグページ生成用の投稿メタデータ
 #[derive(Content, Clone)]
-struct PostMetadata {
+pub(crate) struct PostMetadata {
     title: String,
     description: String,
     author: String,
@@ -154,7 +169,7 @@ struct TagPageContext {
 }
 
 /// 設定ファイルを読み込む
-fn load_config(path: &Path) -> Result<Config> {
+pub(crate) fn load_config(path: &Path) -> Result<Config> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("Failed to read config file: {}", path.display()))?;
     let config: Config = toml::from_str(&content)
@@ -189,7 +204,7 @@ fn markdown_to_html(markdown: &str, allow_dangerous_html: bool) -> Result<String
 }
 
 /// テンプレートを読み込んでキャッシュする
-fn load_templates(layouts_dir: &str) -> Result<HashMap<String, ramhorns::Template<'static>>> {
+pub(crate) fn load_templates(layouts_dir: &str) -> Result<HashMap<String, ramhorns::Template<'static>>> {
     let mut templates = HashMap::new();
 
     let pattern = format!("{}/**/*.html", layouts_dir);
@@ -371,7 +386,7 @@ pub fn run_build(config_path: &Path) -> Result<()> {
 }
 
 /// 個別の Markdown ファイルを処理する
-fn process_markdown_file(
+pub(crate) fn process_markdown_file(
     md_path: &Path,
     config: &Config,
     templates: &HashMap<String, ramhorns::Template<'static>>,
@@ -562,4 +577,277 @@ fn find_files_with_glob(extension: &str) -> Result<Vec<PathBuf>, glob::PatternEr
         }
     }
     Ok(files)
+}
+
+/// 単一の静的ファイルをコピーする
+pub(crate) fn copy_single_static_file(
+    src_path: &Path,
+    static_dir: &str,
+    dist_dir: &str,
+) -> Result<()> {
+    // static/ からの相対パスを取得
+    if let Ok(rel_path) = src_path.strip_prefix(static_dir) {
+        let dest_path = Path::new(dist_dir).join(rel_path);
+
+        // 親ディレクトリを作成
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create directory: {}", parent.display())
+            })?;
+        }
+
+        // ファイルをコピー
+        fs::copy(src_path, &dest_path).with_context(|| {
+            format!(
+                "Failed to copy file from {} to {}",
+                src_path.display(),
+                dest_path.display()
+            )
+        })?;
+
+        println!("Copied: {}", dest_path.display());
+    }
+
+    Ok(())
+}
+
+/// 出力ファイルを削除する（ソースファイル削除時に呼び出す）
+pub(crate) fn delete_output_file(
+    src_path: &Path,
+    src_base_dir: &str,
+    dist_dir: &str,
+    convert_extension: Option<&str>,
+) -> Result<()> {
+    // ソースファイルからの相対パスを取得
+    if let Ok(rel_path) = src_path.strip_prefix(src_base_dir) {
+        let mut dest_path = Path::new(dist_dir).join(rel_path);
+
+        // 拡張子変換が必要な場合（.md → .html）
+        if let Some(ext) = convert_extension {
+            dest_path.set_extension(ext);
+        }
+
+        // ファイルが存在する場合は削除
+        if dest_path.exists() {
+            fs::remove_file(&dest_path).with_context(|| {
+                format!("Failed to delete output file: {}", dest_path.display())
+            })?;
+            println!("Deleted: {}", dest_path.display());
+        }
+    }
+
+    Ok(())
+}
+
+/// テンプレートを使用する Markdown ファイルを検索
+///
+/// テンプレートの検索優先順位:
+/// 1. 完全一致: layouts/{md_path}.html
+/// 2. ディレクトリデフォルト: layouts/{dir}/default.html
+/// 3. ルートデフォルト: layouts/default.html
+pub(crate) fn find_markdown_files_using_template(
+    template_path: &Path,
+    layouts_dir: &str,
+    ignore_files: &[String],
+) -> Result<Vec<PathBuf>> {
+    let mut affected_files = Vec::new();
+
+    // テンプレートの相対パス（layouts/ からの相対）
+    let template_rel_path = template_path
+        .strip_prefix(layouts_dir)
+        .ok()
+        .map(|p| p.to_string_lossy().to_string());
+
+    let Some(template_key) = template_rel_path else {
+        return Ok(affected_files);
+    };
+
+    // すべての Markdown ファイルを取得
+    let md_files = find_files_with_glob("md").context("Failed to find markdown files")?;
+
+    // ignore_files でフィルタリング
+    let md_files: Vec<PathBuf> = md_files
+        .into_iter()
+        .filter(|path| {
+            let path_str = path.to_string_lossy();
+            !ignore_files.iter().any(|ignore| path_str.contains(ignore))
+        })
+        .collect();
+
+    // 全テンプレートを読み込んで、どの Markdown ファイルがどのテンプレートを使うか判定
+    let templates = load_templates(layouts_dir)?;
+
+    for md_path in md_files {
+        let html_path = md_path.with_extension("html");
+        let html_path_str = html_path.to_string_lossy().to_string();
+
+        // このファイルが使用するテンプレートを特定
+        let used_template_key = determine_template_key(&templates, &html_path_str);
+
+        // 変更されたテンプレートを使用しているか確認
+        if let Some(key) = used_template_key {
+            if key == template_key {
+                affected_files.push(md_path);
+            }
+        }
+    }
+
+    Ok(affected_files)
+}
+
+/// Markdown ファイルが使用するテンプレートキーを決定する
+fn determine_template_key(
+    templates: &HashMap<String, ramhorns::Template<'static>>,
+    html_path: &str,
+) -> Option<String> {
+    // 1. 完全一致
+    if templates.contains_key(html_path) {
+        return Some(html_path.to_string());
+    }
+
+    // 2. ディレクトリ内の default.html
+    if let Some(dir) = Path::new(html_path).parent() {
+        let dir_default = format!("{}/default.html", dir.display());
+        if templates.contains_key(&dir_default) {
+            return Some(dir_default);
+        }
+    }
+
+    // 3. ルートの default.html
+    if templates.contains_key("default.html") {
+        return Some("default.html".to_string());
+    }
+
+    None
+}
+
+/// 増分ビルドのエントリポイント
+/// 変更されたファイルの種別に応じて最小限の再ビルドを行う
+pub fn run_incremental_build(
+    config_path: &Path,
+    changed_files: &[ChangedFile],
+) -> Result<()> {
+    // 設定ファイルを読み込む
+    let config = load_config(config_path)?;
+
+    // テンプレートを読み込む
+    let templates = load_templates(&config.layouts)?;
+
+    // 投稿メタデータを収集（タグページ再生成用）
+    let mut all_posts: Vec<PostMetadata> = Vec::new();
+    let mut need_regenerate_tags = false;
+
+    for changed_file in changed_files {
+        match changed_file {
+            ChangedFile::Markdown(path) => {
+                // Markdown ファイルが ignore_files に含まれているかチェック
+                let path_str = path.to_string_lossy();
+                if config
+                    .build
+                    .ignore_files
+                    .iter()
+                    .any(|ignore| path_str.contains(ignore))
+                {
+                    continue;
+                }
+
+                // 単一の Markdown ファイルを処理
+                if let Ok(Some(metadata)) = process_markdown_file(path, &config, &templates) {
+                    all_posts.push(metadata);
+                }
+                need_regenerate_tags = true;
+            }
+            ChangedFile::Static(path) => {
+                // 単一の静的ファイルをコピー
+                copy_single_static_file(path, &config.r#static, &config.dist)?;
+            }
+            ChangedFile::Template(path) => {
+                // テンプレート変更時は、そのテンプレートを使用する全 Markdown を再ビルド
+                let affected_md_files = find_markdown_files_using_template(
+                    path,
+                    &config.layouts,
+                    &config.build.ignore_files,
+                )?;
+
+                // テンプレートを再読み込み
+                let fresh_templates = load_templates(&config.layouts)?;
+
+                for md_path in affected_md_files {
+                    if let Ok(Some(metadata)) =
+                        process_markdown_file(&md_path, &config, &fresh_templates)
+                    {
+                        all_posts.push(metadata);
+                    }
+                }
+                need_regenerate_tags = true;
+            }
+            ChangedFile::Config => {
+                // 設定ファイル変更時はフルビルド
+                // この場合は run_build() を呼び出すべきなので、
+                // 呼び出し側で処理する
+                return Err(anyhow::anyhow!(
+                    "Config changed, full rebuild required"
+                ));
+            }
+            ChangedFile::Deleted(path) => {
+                // ファイル削除時は対応する出力ファイルを削除
+                let path_str = path.to_string_lossy();
+
+                if path_str.ends_with(".md") {
+                    // Markdown ファイルの削除
+                    delete_output_file(path, "", &config.dist, Some("html"))?;
+                    need_regenerate_tags = true;
+                } else if path.starts_with(&config.r#static) {
+                    // 静的ファイルの削除
+                    delete_output_file(path, &config.r#static, &config.dist, None)?;
+                }
+            }
+        }
+    }
+
+    // タグページを再生成（Markdown の変更があった場合）
+    if need_regenerate_tags && config.build.tags.enable {
+        // 全 Markdown ファイルからメタデータを再収集してタグページを生成
+        let md_files = find_files_with_glob("md").context("Failed to find markdown files")?;
+        let md_files: Vec<PathBuf> = md_files
+            .into_iter()
+            .filter(|path| {
+                let path_str = path.to_string_lossy();
+                !config
+                    .build
+                    .ignore_files
+                    .iter()
+                    .any(|ignore| path_str.contains(ignore))
+            })
+            .collect();
+
+        let mut tag_posts: Vec<PostMetadata> = Vec::new();
+        for md_path in &md_files {
+            // frontmatter を読み取ってメタデータを収集
+            if let Ok(content) = fs::read_to_string(md_path) {
+                if let Ok((frontmatter, _)) = parse_frontmatter(&content) {
+                    if let Some(tags_vec) = &frontmatter.tags {
+                        if !tags_vec.is_empty() {
+                            let html_path = md_path.with_extension("html");
+                            let url = format!("/{}", html_path.to_string_lossy());
+                            tag_posts.push(PostMetadata {
+                                title: frontmatter.title,
+                                description: frontmatter.description,
+                                author: frontmatter.author,
+                                pub_datetime: frontmatter.pub_datetime,
+                                url,
+                                tags: Some(tags_vec.clone()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        if !tag_posts.is_empty() {
+            generate_tag_pages(tag_posts, &config, &templates)?;
+        }
+    }
+
+    Ok(())
 }
