@@ -11,6 +11,10 @@
 
 ## main
 
+- [FIX] `serve` コマンドで `ls` 実行時にビルドが誤って走る問題を修正
+  - `notify-debouncer-mini` から `notify-debouncer-full` に移行し、`EventKind::Access` を除外するようにした
+  - [#46](https://github.com/veltiosoft/vss/pull/46)
+
 ## v0.18.0
 
 - [ADD] tag ページ生成機能 (仮) を追加する

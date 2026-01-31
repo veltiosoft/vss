@@ -1,0 +1,20 @@
+# CLAUDE.md
+
+このファイルは Claude Code (claude.ai/code) がこのリポジトリで作業する際のガイダンスを提供します。
+
+## 変更履歴の記録
+
+機能追加やバグ修正を行った場合は、必ず `CHANGELOG.md` の `## main` セクションに変更履歴を追記してください。
+
+フォーマット:
+- `[ADD]` - 後方互換性がある追加
+- `[UPDATE]` - 後方互換性がある変更
+- `[CHANGE]` - 後方互換性のない変更
+- `[FIX]` - バグ修正
+
+例:
+```markdown
+- [FIX] `serve` コマンドで `ls` 実行時にビルドが誤って走る問題を修正
+  - 詳細な説明
+  - [#PR番号](https://github.com/veltiosoft/vss/pull/PR番号)
+```
