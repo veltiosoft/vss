@@ -11,6 +11,9 @@
 
 ## main
 
+- [UPDATE] `build` コマンドを関数型パイプラインアーキテクチャにリファクタリング
+  - データの流れを明確化（収集 → パース → レンダリング → 出力）
+  - 副作用（ファイル I/O）を分離し、純粋関数で変換処理を行うように変更
 - [FIX] `serve` コマンドで `ls` 実行時にビルドが誤って走る問題を修正
   - `notify-debouncer-mini` から `notify-debouncer-full` に移行し、`EventKind::Access` を除外するようにした
   - [#46](https://github.com/veltiosoft/vss/pull/46)

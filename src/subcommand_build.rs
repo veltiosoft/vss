@@ -9,6 +9,30 @@ use std::{
     time::Instant,
 };
 
+// ============================================================================
+// Pipeline Data Structures
+// ============================================================================
+
+/// パース済み Markdown ドキュメント
+struct ParsedDocument {
+    source_path: PathBuf,
+    frontmatter: FrontMatter,
+    html_content: String,
+}
+
+/// レンダリング済みページ
+struct RenderedPage {
+    output_path: PathBuf,
+    html: String,
+    metadata: Option<PostMetadata>,
+}
+
+/// 出力ファイル
+struct OutputFile {
+    path: PathBuf,
+    content: String,
+}
+
 /// vss.toml の設定構造
 #[derive(Debug, Deserialize)]
 struct Config {
@@ -284,6 +308,236 @@ fn copy_static_files(static_dir: &str, dist_dir: &str) -> Result<()> {
     Ok(())
 }
 
+// ============================================================================
+// Phase 1: Pure Functions (Collection & Transformation)
+// ============================================================================
+
+/// Markdown ファイルを収集してコンテンツを読み込む
+fn collect_markdown_sources(config: &Config) -> Result<Vec<(PathBuf, String)>> {
+    let md_files = find_files_with_glob("md").context("Failed to find markdown files")?;
+
+    // ignore_files でフィルタリング
+    let filtered: Vec<PathBuf> = md_files
+        .into_iter()
+        .filter(|path| {
+            let path_str = path.to_string_lossy();
+            !config
+                .build
+                .ignore_files
+                .iter()
+                .any(|ignore| path_str.contains(ignore))
+        })
+        .collect();
+
+    // ファイルコンテンツを読み込む
+    filtered
+        .into_iter()
+        .map(|path| {
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read markdown file: {}", path.display()))?;
+            Ok((path, content))
+        })
+        .collect()
+}
+
+/// 単一ドキュメントをパース
+fn parse_document(source_path: PathBuf, content: &str, config: &Config) -> Result<ParsedDocument> {
+    let (frontmatter, markdown_content) = parse_frontmatter(content)?;
+    let html_content = markdown_to_html(
+        &markdown_content,
+        config.build.markdown.allow_dangerous_html,
+    )?;
+
+    Ok(ParsedDocument {
+        source_path,
+        frontmatter,
+        html_content,
+    })
+}
+
+/// 単一ページをレンダリング
+fn render_page(
+    doc: ParsedDocument,
+    config: &Config,
+    templates: &HashMap<String, ramhorns::Template<'static>>,
+) -> Result<RenderedPage> {
+    // 出力パスを決定（.md → .html）
+    let html_path = doc.source_path.with_extension("html");
+    let html_path_str = html_path.to_string_lossy().to_string();
+
+    // テンプレートを検索
+    let template = lookup_template(templates, &html_path_str)
+        .context("No template found (default.html is required)")?;
+
+    // タグ構造体を作成
+    let tags: Vec<Tag> = doc
+        .frontmatter
+        .tags
+        .as_ref()
+        .map(|tags_vec| {
+            tags_vec
+                .iter()
+                .map(|tag_name| Tag {
+                    name: tag_name.clone(),
+                    url: config.build.tags.url_pattern.replace("{tag}", tag_name),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // レンダリングコンテキストを構築
+    let has_tags = !tags.is_empty();
+    let context = RenderContext {
+        site_title: config.site_title.clone(),
+        site_description: config.site_description.clone(),
+        base_url: config.base_url.clone(),
+        contents: doc.html_content,
+        title: doc.frontmatter.title.clone(),
+        description: doc.frontmatter.description.clone(),
+        author: doc.frontmatter.author.clone(),
+        pub_datetime: doc.frontmatter.pub_datetime.clone(),
+        post_slug: doc.frontmatter.post_slug.clone(),
+        has_tags,
+        tags,
+    };
+
+    // テンプレートをレンダリング
+    let html = template.render(&context);
+
+    // 出力先を決定
+    let output_path = Path::new(&config.dist).join(&html_path);
+
+    println!("Generated: {}", output_path.display());
+
+    // メタデータを生成（タグがある場合のみ）
+    let metadata = if config.build.tags.enable {
+        doc.frontmatter.tags.as_ref().and_then(|tags_vec| {
+            if !tags_vec.is_empty() {
+                let url = format!("/{}", html_path_str);
+                Some(PostMetadata {
+                    title: doc.frontmatter.title,
+                    description: doc.frontmatter.description,
+                    author: doc.frontmatter.author,
+                    pub_datetime: doc.frontmatter.pub_datetime,
+                    url,
+                    tags: Some(tags_vec.clone()),
+                })
+            } else {
+                None
+            }
+        })
+    } else {
+        None
+    };
+
+    Ok(RenderedPage {
+        output_path,
+        html,
+        metadata,
+    })
+}
+
+/// タグページの OutputFile を生成
+fn generate_tag_outputs(
+    rendered_pages: &[RenderedPage],
+    config: &Config,
+    templates: &HashMap<String, ramhorns::Template<'static>>,
+) -> Result<Vec<OutputFile>> {
+    // タグページ生成が無効な場合は空を返す
+    if !config.build.tags.enable {
+        return Ok(Vec::new());
+    }
+
+    // メタデータを収集
+    let all_posts: Vec<PostMetadata> = rendered_pages
+        .iter()
+        .filter_map(|p| p.metadata.clone())
+        .collect();
+
+    if all_posts.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // タグごとに投稿をグループ化
+    let mut tag_to_posts: HashMap<String, Vec<PostMetadata>> = HashMap::new();
+
+    for post in all_posts {
+        if let Some(tags_vec) = &post.tags {
+            for tag_name in tags_vec {
+                tag_to_posts
+                    .entry(tag_name.clone())
+                    .or_default()
+                    .push(post.clone());
+            }
+        }
+    }
+
+    // テンプレートを取得
+    let template = templates
+        .get(&config.build.tags.template)
+        .with_context(|| {
+            format!(
+                "Tag template not found: layouts/{}",
+                config.build.tags.template
+            )
+        })?;
+
+    // 各タグの OutputFile を生成
+    let outputs: Vec<OutputFile> = tag_to_posts
+        .into_iter()
+        .map(|(tag_name, posts)| {
+            let context = TagPageContext {
+                site_title: config.site_title.clone(),
+                site_description: config.site_description.clone(),
+                base_url: config.base_url.clone(),
+                tag_name: tag_name.clone(),
+                posts,
+            };
+
+            let content = template.render(&context);
+
+            // 出力先を決定
+            let tag_path_str = config.build.tags.url_pattern.replace("{tag}", &tag_name);
+            let relative_path = tag_path_str.trim_start_matches('/');
+
+            let path = if relative_path.ends_with('/') {
+                Path::new(&config.dist)
+                    .join(relative_path)
+                    .join("index.html")
+            } else {
+                Path::new(&config.dist).join(relative_path)
+            };
+
+            println!("Generated tag page: {}", path.display());
+
+            OutputFile { path, content }
+        })
+        .collect();
+
+    Ok(outputs)
+}
+
+// ============================================================================
+// Phase 2: Side Effects (Output)
+// ============================================================================
+
+/// すべての出力ファイルを書き出す
+fn write_all_outputs(outputs: impl Iterator<Item = OutputFile>) -> Result<()> {
+    for output in outputs {
+        // 親ディレクトリを作成
+        if let Some(parent) = output.path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+        }
+
+        // ファイルに書き込む
+        fs::write(&output.path, &output.content)
+            .with_context(|| format!("Failed to write output file: {}", output.path.display()))?;
+    }
+
+    Ok(())
+}
+
 /// ビルドコマンドのエントリポイント。
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
     let config: Option<PathBuf> = noargs::opt("config")
@@ -320,226 +574,54 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
 
 /// 実際のビルド処理
 pub fn run_build(config_path: &Path) -> Result<()> {
-    // 1. 設定ファイルを読み込む
+    // 設定ファイルを読み込む
     let config = load_config(config_path)?;
 
-    // 2. dist ディレクトリを作成
-    create_dist_dir(&config.dist)?;
-
-    // 3. 静的ファイルをコピー
-    copy_static_files(&config.r#static, &config.dist)?;
-
-    // 4. Markdown ファイルを検索
-    let md_files = find_files_with_glob("md").context("Failed to find markdown files")?;
-
-    // 5. ignore_files でフィルタリング
-    let md_files: Vec<PathBuf> = md_files
-        .into_iter()
-        .filter(|path| {
-            let path_str = path.to_string_lossy();
-            !config
-                .build
-                .ignore_files
-                .iter()
-                .any(|ignore| path_str.contains(ignore))
-        })
-        .collect();
-
-    // 6. テンプレートを読み込む
+    // テンプレートを読み込む
     let templates = load_templates(&config.layouts)?;
 
-    // 7. 投稿メタデータを収集
-    let mut all_posts: Vec<PostMetadata> = Vec::new();
+    // ========================================================================
+    // Phase 1: 収集 & 変換（純粋関数）
+    // ========================================================================
 
-    // 8. 各 Markdown ファイルを処理
-    for md_path in md_files {
-        let post_metadata = process_markdown_file(&md_path, &config, &templates)?;
-        // タグページ生成が有効な場合のみメタデータを収集
-        if config.build.tags.enable
-            && let Some(metadata) = post_metadata
-        {
-            all_posts.push(metadata);
-        }
-    }
+    // Markdown ソースを収集
+    let sources = collect_markdown_sources(&config)?;
 
-    // 9. タグページを生成
-    if !all_posts.is_empty() {
-        generate_tag_pages(all_posts, &config, &templates)?;
-    }
+    // ドキュメントをパース
+    let parsed_docs: Vec<ParsedDocument> = sources
+        .into_iter()
+        .map(|(path, content)| parse_document(path, &content, &config))
+        .collect::<Result<Vec<_>>>()?;
 
-    Ok(())
-}
+    // ページをレンダリング
+    let rendered_pages: Vec<RenderedPage> = parsed_docs
+        .into_iter()
+        .map(|doc| render_page(doc, &config, &templates))
+        .collect::<Result<Vec<_>>>()?;
 
-/// 個別の Markdown ファイルを処理する
-fn process_markdown_file(
-    md_path: &Path,
-    config: &Config,
-    templates: &HashMap<String, ramhorns::Template<'static>>,
-) -> Result<Option<PostMetadata>> {
-    // Markdown ファイルを読み込む
-    let content = fs::read_to_string(md_path)
-        .with_context(|| format!("Failed to read markdown file: {}", md_path.display()))?;
+    // タグページの出力を生成
+    let tag_outputs = generate_tag_outputs(&rendered_pages, &config, &templates)?;
 
-    // Frontmatter を解析
-    let (frontmatter, markdown_content) = parse_frontmatter(&content)?;
+    // ========================================================================
+    // Phase 2: 出力（副作用）
+    // ========================================================================
 
-    // Markdown を HTML に変換
-    let html_content = markdown_to_html(
-        &markdown_content,
-        config.build.markdown.allow_dangerous_html,
+    // dist ディレクトリを作成
+    create_dist_dir(&config.dist)?;
+
+    // 静的ファイルをコピー
+    copy_static_files(&config.r#static, &config.dist)?;
+
+    // レンダリング済みページを書き出し
+    write_all_outputs(
+        rendered_pages.iter().map(|p| OutputFile {
+            path: p.output_path.clone(),
+            content: p.html.clone(),
+        }),
     )?;
 
-    // 出力パスを決定（.md → .html）
-    let html_path = md_path.with_extension("html");
-    let html_path_str = html_path.to_string_lossy().to_string();
-
-    // テンプレートを検索
-    let template = lookup_template(templates, &html_path_str)
-        .context("No template found (default.html is required)")?;
-
-    // タグ構造体を作成（url_pattern を使用）
-    let tags: Vec<Tag> = frontmatter
-        .tags
-        .as_ref()
-        .map(|tags_vec| {
-            tags_vec
-                .iter()
-                .map(|tag_name| Tag {
-                    name: tag_name.clone(),
-                    url: config.build.tags.url_pattern.replace("{tag}", tag_name),
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    // レンダリングコンテキストを構築
-    let has_tags = !tags.is_empty();
-    let context = RenderContext {
-        site_title: config.site_title.clone(),
-        site_description: config.site_description.clone(),
-        base_url: config.base_url.clone(),
-        contents: html_content,
-        title: frontmatter.title.clone(),
-        description: frontmatter.description.clone(),
-        author: frontmatter.author.clone(),
-        pub_datetime: frontmatter.pub_datetime.clone(),
-        post_slug: frontmatter.post_slug.clone(),
-        has_tags,
-        tags,
-    };
-
-    // テンプレートをレンダリング
-    let rendered = template.render(&context);
-
-    // 出力先を決定
-    let output_path = Path::new(&config.dist).join(&html_path);
-
-    // 親ディレクトリを作成
-    if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
-    }
-
-    // ファイルに書き込む
-    fs::write(&output_path, rendered)
-        .with_context(|| format!("Failed to write output file: {}", output_path.display()))?;
-
-    println!("Generated: {}", output_path.display());
-
-    // タグがある場合はメタデータを返す
-    let metadata = frontmatter.tags.as_ref().and_then(|tags_vec| {
-        if !tags_vec.is_empty() {
-            let url = format!("/{}", html_path_str);
-            Some(PostMetadata {
-                title: frontmatter.title,
-                description: frontmatter.description,
-                author: frontmatter.author,
-                pub_datetime: frontmatter.pub_datetime,
-                url,
-                tags: Some(tags_vec.clone()),
-            })
-        } else {
-            None
-        }
-    });
-
-    Ok(metadata)
-}
-
-/// タグページを生成する（設定を考慮）
-fn generate_tag_pages(
-    all_posts: Vec<PostMetadata>,
-    config: &Config,
-    templates: &HashMap<String, ramhorns::Template<'static>>,
-) -> Result<()> {
-    // タグページ生成が無効な場合は何もしない
-    if !config.build.tags.enable {
-        println!("Tag page generation is disabled in config");
-        return Ok(());
-    }
-
-    // タグごとに投稿をグループ化
-    let mut tag_to_posts: HashMap<String, Vec<PostMetadata>> = HashMap::new();
-
-    for post in all_posts {
-        if let Some(tags_vec) = &post.tags {
-            for tag_name in tags_vec {
-                tag_to_posts
-                    .entry(tag_name.clone())
-                    .or_default()
-                    .push(post.clone());
-            }
-        }
-    }
-
-    // 各タグのページを生成
-    for (tag_name, posts) in tag_to_posts {
-        let context = TagPageContext {
-            site_title: config.site_title.clone(),
-            site_description: config.site_description.clone(),
-            base_url: config.base_url.clone(),
-            tag_name: tag_name.clone(),
-            posts,
-        };
-
-        // テンプレート検索（設定から取得）
-        let template = templates
-            .get(&config.build.tags.template)
-            .with_context(|| {
-                format!(
-                    "Tag template not found: layouts/{}",
-                    config.build.tags.template
-                )
-            })?;
-
-        // レンダリング
-        let rendered = template.render(&context);
-
-        // 出力先（設定のurl_patternから生成）
-        // url_pattern: "/tags/{tag}/" -> output: "dist/tags/{tag}/index.html"
-        let tag_path_str = config.build.tags.url_pattern.replace("{tag}", &tag_name);
-        let relative_path = tag_path_str.trim_start_matches('/');
-
-        // 指定された url_pattern が `/` で終わらない場合は `/tags/{tag}.html` のような path が
-        // 指定されていると仮定して、`index.html` を path に結合しない
-        let output_path = if relative_path.ends_with('/') {
-            Path::new(&config.dist)
-                .join(relative_path)
-                .join("index.html")
-        } else {
-            Path::new(&config.dist).join(relative_path)
-        };
-
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
-        }
-
-        fs::write(&output_path, rendered)
-            .with_context(|| format!("Failed to write tag page: {}", output_path.display()))?;
-
-        println!("Generated tag page: {}", output_path.display());
-    }
+    // タグページを書き出し
+    write_all_outputs(tag_outputs.into_iter())?;
 
     Ok(())
 }
