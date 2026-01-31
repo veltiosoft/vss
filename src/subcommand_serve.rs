@@ -16,7 +16,7 @@ use std::{
 };
 use tower_http::services::ServeDir;
 
-use crate::subcommand_build;
+use crate::subcommand_build::{self, ChangedFile};
 
 /// serve コマンドのエントリポイント
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
@@ -123,8 +123,12 @@ async fn html_fallback_middleware(mut request: Request, next: Next) -> Response 
 fn watch_files(config_path: &Path, _rebuild_flag: Arc<Mutex<bool>>) -> Result<()> {
     let config_path_clone = config_path.to_path_buf();
 
-    // dist ディレクトリのパスを取得（絶対パスに変換）
-    let dist_dir = get_dist_dir(config_path)?;
+    // 設定を取得（subcommand_build の load_config を直接使用）
+    let config = subcommand_build::load_config(config_path)?;
+    let dist_dir = config.dist.clone();
+    let static_dir = config.r#static.clone();
+    let layouts_dir = config.layouts.clone();
+
     let current_dir = std::env::current_dir().context("Failed to get current directory")?;
     let dist_path = current_dir.join(&dist_dir);
 
@@ -134,21 +138,82 @@ fn watch_files(config_path: &Path, _rebuild_flag: Arc<Mutex<bool>>) -> Result<()
         None,
         move |res: DebounceEventResult| match res {
             Ok(events) => {
-                let should_rebuild = events.iter().any(|event| {
+                // dist ディレクトリ外の変更されたファイルを収集
+                let mut changed_files: Vec<ChangedFile> = Vec::new();
+                let mut has_deletion = false;
+
+                for event in &events {
                     // Access イベント（ls による atime 更新など）は無視
                     if matches!(event.kind, EventKind::Access(_)) {
-                        return false;
+                        continue;
                     }
-                    // いずれかのパスが dist ディレクトリ外であれば再ビルド
-                    event.paths.iter().any(|path| !path.starts_with(&dist_path))
-                });
 
-                if should_rebuild {
-                    println!("[INFO] File changed, rebuilding...");
-                    if let Err(e) = subcommand_build::run_build(&config_path_clone) {
-                        eprintln!("[ERROR] Rebuild failed: {:#}", e);
-                    } else {
-                        println!("[INFO] Rebuild completed");
+                    // 削除イベントかどうか判定
+                    let is_remove = matches!(event.kind, EventKind::Remove(_));
+
+                    for path in &event.paths {
+                        // dist ディレクトリ内は無視
+                        if path.starts_with(&dist_path) {
+                            continue;
+                        }
+
+                        if is_remove {
+                            // 削除されたファイル
+                            has_deletion = true;
+                            changed_files.push(ChangedFile::Deleted(path.clone()));
+                        } else if let Some(classified) = classify_changed_file(
+                            path,
+                            &config_path_clone,
+                            &static_dir,
+                            &layouts_dir,
+                        ) {
+                            // Config 変更の場合は即座にフルビルド
+                            if matches!(classified, ChangedFile::Config) {
+                                println!("[INFO] Config changed, running full rebuild...");
+                                if let Err(e) = subcommand_build::run_build(&config_path_clone) {
+                                    eprintln!("[ERROR] Full rebuild failed: {:#}", e);
+                                } else {
+                                    println!("[INFO] Full rebuild completed");
+                                }
+                                return;
+                            }
+                            changed_files.push(classified);
+                        }
+                    }
+                }
+
+                if changed_files.is_empty() {
+                    return;
+                }
+
+                // 変更されたファイル数を表示
+                let file_count = changed_files.len();
+                let file_desc = if file_count == 1 {
+                    "1 file".to_string()
+                } else {
+                    format!("{} files", file_count)
+                };
+
+                println!("[INFO] {} changed, rebuilding...", file_desc);
+
+                // 増分ビルドを試行
+                match subcommand_build::run_incremental_build(&config_path_clone, &changed_files) {
+                    Ok(()) => {
+                        println!("[INFO] Incremental rebuild completed");
+                    }
+                    Err(e) => {
+                        // 増分ビルドが失敗した場合（Config 変更など）はフルビルドにフォールバック
+                        let error_msg = format!("{:#}", e);
+                        if error_msg.contains("full rebuild required") || has_deletion {
+                            println!("[INFO] Falling back to full rebuild...");
+                            if let Err(e) = subcommand_build::run_build(&config_path_clone) {
+                                eprintln!("[ERROR] Full rebuild failed: {:#}", e);
+                            } else {
+                                println!("[INFO] Full rebuild completed");
+                            }
+                        } else {
+                            eprintln!("[ERROR] Incremental rebuild failed: {:#}", e);
+                        }
                     }
                 }
             }
@@ -172,22 +237,38 @@ fn watch_files(config_path: &Path, _rebuild_flag: Arc<Mutex<bool>>) -> Result<()
 
 /// 設定ファイルから dist ディレクトリのパスを取得
 fn get_dist_dir(config_path: &Path) -> Result<String> {
-    use serde::Deserialize;
-
-    #[derive(Debug, Deserialize)]
-    struct Config {
-        #[serde(default = "default_dist")]
-        dist: String,
-    }
-
-    fn default_dist() -> String {
-        "dist".to_string()
-    }
-
-    let content = std::fs::read_to_string(config_path)
-        .with_context(|| format!("Failed to read config file: {}", config_path.display()))?;
-    let config: Config = toml::from_str(&content)
-        .with_context(|| format!("Failed to parse config file: {}", config_path.display()))?;
-
+    let config = subcommand_build::load_config(config_path)?;
     Ok(config.dist)
+}
+
+/// 変更されたファイルを分類する
+fn classify_changed_file(
+    path: &Path,
+    config_path: &Path,
+    static_dir: &str,
+    layouts_dir: &str,
+) -> Option<ChangedFile> {
+    let path_str = path.to_string_lossy();
+
+    // 設定ファイルの変更
+    if path == config_path {
+        return Some(ChangedFile::Config);
+    }
+
+    // 静的ファイルの変更
+    if path.starts_with(static_dir) || path_str.starts_with(&format!("./{}", static_dir)) {
+        return Some(ChangedFile::Static(path.to_path_buf()));
+    }
+
+    // テンプレートファイルの変更
+    if path.starts_with(layouts_dir) || path_str.starts_with(&format!("./{}", layouts_dir)) {
+        return Some(ChangedFile::Template(path.to_path_buf()));
+    }
+
+    // Markdown ファイルの変更
+    if path.extension().is_some_and(|ext| ext == "md") {
+        return Some(ChangedFile::Markdown(path.to_path_buf()));
+    }
+
+    None
 }

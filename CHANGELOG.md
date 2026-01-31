@@ -11,6 +11,13 @@
 
 ## main
 
+- [UPDATE] `serve` コマンドで増分ビルド機能を追加
+  - ファイル変更時に全ファイルを再ビルドするのではなく、変更があったファイルのみを再ビルドするように改善
+  - Markdown ファイル変更時はそのファイルのみ再生成
+  - 静的ファイル変更時はそのファイルのみコピー
+  - テンプレート変更時はそのテンプレートを使用する Markdown ファイルのみ再生成
+  - 設定ファイル (vss.toml) 変更時のみフルビルドを実行
+  - ファイル削除時は対応する出力ファイルを削除
 - [FIX] `serve` コマンドで `ls` 実行時にビルドが誤って走る問題を修正
   - `notify-debouncer-mini` から `notify-debouncer-full` に移行し、`EventKind::Access` を除外するようにした
   - [#46](https://github.com/veltiosoft/vss/pull/46)
