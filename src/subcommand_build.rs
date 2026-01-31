@@ -204,7 +204,9 @@ fn markdown_to_html(markdown: &str, allow_dangerous_html: bool) -> Result<String
 }
 
 /// テンプレートを読み込んでキャッシュする
-pub(crate) fn load_templates(layouts_dir: &str) -> Result<HashMap<String, ramhorns::Template<'static>>> {
+pub(crate) fn load_templates(
+    layouts_dir: &str,
+) -> Result<HashMap<String, ramhorns::Template<'static>>> {
     let mut templates = HashMap::new();
 
     let pattern = format!("{}/**/*.html", layouts_dir);
@@ -591,9 +593,8 @@ pub(crate) fn copy_single_static_file(
 
         // 親ディレクトリを作成
         if let Some(parent) = dest_path.parent() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!("Failed to create directory: {}", parent.display())
-            })?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
 
         // ファイルをコピー
@@ -736,10 +737,7 @@ fn to_relative_path(path: &Path) -> PathBuf {
 
 /// 増分ビルドのエントリポイント
 /// 変更されたファイルの種別に応じて最小限の再ビルドを行う
-pub fn run_incremental_build(
-    config_path: &Path,
-    changed_files: &[ChangedFile],
-) -> Result<()> {
+pub fn run_incremental_build(config_path: &Path, changed_files: &[ChangedFile]) -> Result<()> {
     // 設定ファイルを読み込む
     let config = load_config(config_path)?;
 
@@ -802,9 +800,7 @@ pub fn run_incremental_build(
                 // 設定ファイル変更時はフルビルド
                 // この場合は run_build() を呼び出すべきなので、
                 // 呼び出し側で処理する
-                return Err(anyhow::anyhow!(
-                    "Config changed, full rebuild required"
-                ));
+                return Err(anyhow::anyhow!("Config changed, full rebuild required"));
             }
             ChangedFile::Deleted(path) => {
                 // ファイル削除時は対応する出力ファイルを削除
@@ -825,7 +821,12 @@ pub fn run_incremental_build(
                     need_regenerate_tags = true;
                 } else if path.starts_with(current_dir.join(&config.r#static)) {
                     // 静的ファイルの削除
-                    delete_output_file(path, &current_dir.join(&config.r#static).to_string_lossy(), &config.dist, None)?;
+                    delete_output_file(
+                        path,
+                        &current_dir.join(&config.r#static).to_string_lossy(),
+                        &config.dist,
+                        None,
+                    )?;
                 } else if path.starts_with(current_dir.join(&config.layouts)) {
                     // テンプレートが削除された場合はフルビルドを要求
                     return Err(anyhow::anyhow!(
