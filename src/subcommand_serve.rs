@@ -6,7 +6,8 @@ use axum::{
     middleware::{self, Next},
     response::Response,
 };
-use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::*};
+use notify::event::EventKind;
+use notify_debouncer_full::{new_debouncer, notify::RecursiveMode, DebounceEventResult};
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
@@ -130,12 +131,23 @@ fn watch_files(config_path: &Path, _rebuild_flag: Arc<Mutex<bool>>) -> Result<()
     // デバウンサーを作成（300ms の遅延）
     let mut debouncer = new_debouncer(
         Duration::from_millis(300),
+        None,
         move |res: DebounceEventResult| match res {
             Ok(events) => {
-                // dist ディレクトリ以外のファイルが変更された場合のみ再ビルド
-                let should_rebuild = events
-                    .iter()
-                    .any(|event| !event.path.starts_with(&dist_path));
+                let should_rebuild = events.iter().any(|debounced_event| {
+                    let path = match debounced_event.paths.first() {
+                        Some(p) => p,
+                        None => return false,
+                    };
+
+                    // dist ディレクトリ以下は無視
+                    if path.starts_with(&dist_path) {
+                        return false;
+                    }
+
+                    // Access イベント（ls による atime 更新など）は無視
+                    !matches!(debounced_event.kind, EventKind::Access(_))
+                });
 
                 if should_rebuild {
                     println!("[INFO] File changed, rebuilding...");
@@ -155,7 +167,6 @@ fn watch_files(config_path: &Path, _rebuild_flag: Arc<Mutex<bool>>) -> Result<()
 
     // 現在のディレクトリ配下を再帰的に監視
     debouncer
-        .watcher()
         .watch(&current_dir, RecursiveMode::Recursive)
         .context("Failed to watch directory")?;
 
