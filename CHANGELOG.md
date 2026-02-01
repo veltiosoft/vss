@@ -11,6 +11,7 @@
 
 ## main
 
+- [ADD] `serve` コマンドで初回ビルドおよび再ビルド時に処理時間を表示
 - [FIX] `serve` コマンドで `ls` 実行時にビルドが誤って走る問題を修正
   - `notify-debouncer-mini` から `notify-debouncer-full` に移行し、`EventKind::Access` を除外するようにした
   - [#46](https://github.com/veltiosoft/vss/pull/46)
