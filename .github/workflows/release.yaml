@@ -10,7 +10,7 @@ env:
 
 jobs:
   github-release:
-    name: "Create GitHub Release"
+    name: "Create draft GitHub Release"
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.get_version.outputs.VERSION }}
@@ -22,12 +22,13 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
 
-      - name: Create Release
+      - name: Create draft release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create ${{ steps.get_version.outputs.VERSION }} \
             --title "${{ steps.get_version.outputs.VERSION }}" \
+            --draft \
             --generate-notes
 
   build:
@@ -128,4 +129,15 @@ jobs:
         run: |
           gh release upload ${{ needs.github-release.outputs.version }} \
             vss_${{ matrix.platform.os_name }}_${{ matrix.platform.arch_name }}.${{ matrix.platform.archive_ext }}
+
+  publish:
+    name: "Publish GitHub Release"
+    needs: [github-release, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Publish release after all assets are uploaded
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.github-release.outputs.version }}
+        run: gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest
 
