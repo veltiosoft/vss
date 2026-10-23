@@ -11,6 +11,8 @@
 
 ## main
 
+## v0.19.0
+
 - [ADD] `partials/` の Markdown をテンプレートに差し込めるようにする
   - `{{{partials.news}}}` で HTML を参照し、`{{#partials.news}}…{{/partials.news}}` で空のときは欄ごと非表示にできる
   - 部品は通常ページ・タグページから参照でき、単独のページやタグ一覧の投稿としては出力しない
