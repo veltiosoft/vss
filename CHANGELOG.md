@@ -11,6 +11,11 @@
 
 ## main
 
+- [ADD] `partials/` の Markdown をテンプレートに差し込めるようにする
+  - `{{{partials.news}}}` で HTML を参照し、`{{#partials.news}}…{{/partials.news}}` で空のときは欄ごと非表示にできる
+  - 部品は通常ページ・タグページから参照でき、単独のページやタグ一覧の投稿としては出力しない
+  - [#51](https://github.com/veltiosoft/vss/issues/51)
+
 - [FIX] `serve` コマンドで `ls` 実行時にビルドが誤って走る問題を修正
   - `notify-debouncer-mini` から `notify-debouncer-full` に移行し、`EventKind::Access` を除外するようにした
   - [#46](https://github.com/veltiosoft/vss/pull/46)
