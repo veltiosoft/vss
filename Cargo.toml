@@ -22,4 +22,6 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["fs"] }
 
 [dev-dependencies]
+semver = "1.0"
 tempfile = "3"
+webpki-roots = "1.0"
