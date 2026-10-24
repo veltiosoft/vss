@@ -8,6 +8,84 @@ use tempfile::TempDir;
 
 static CWD: Mutex<()> = Mutex::new(());
 
+#[test]
+fn rejects_tag_names_that_can_be_url_schemes_or_windows_prefixes() {
+    for tag in [
+        "javascript:alert(1)",
+        "C:escape",
+        "data:text/html,test",
+        ".",
+        "a\nb",
+    ] {
+        assert!(!is_safe_tag_name(tag), "Accepted unsafe tag: {tag:?}");
+    }
+}
+
+#[test]
+fn relative_tag_patterns_cannot_publish_javascript_links() {
+    let _site = Site::new();
+    write("vss.toml", "[build.tags]\nurl_pattern = '{tag}.html'");
+    write(
+        "layouts/default.html",
+        "{{#tags}}<a href=\"{{url}}\">{{name}}</a>{{/tags}}",
+    );
+    write(
+        "index.md",
+        "---\ntags: ['javascript:alert(1)', 'javascript:alert(1)//', news]\n---\nHome",
+    );
+    run_build(Path::new("vss.toml")).unwrap();
+    assert_eq!(read("dist/index.html"), "<a href=\"/news.html\">news</a>");
+    assert!(Path::new("dist/news.html").exists());
+    assert!(!Path::new("dist/javascript:alert(1).html").exists());
+}
+
+#[test]
+fn tag_urls_encode_path_characters_and_keep_output_paths_consistent() {
+    let _site = Site::new();
+    let config = load_config(Path::new("vss.toml")).unwrap();
+    for (tag, encoded) in [
+        ("C++", "C%2B%2B"),
+        ("a b", "a%20b"),
+        ("a#b?c%20", "a%23b%3Fc%2520"),
+        ("日本語", "%E6%97%A5%E6%9C%AC%E8%AA%9E"),
+    ] {
+        assert_eq!(tag_url(&config, tag), format!("/tags/{encoded}/"));
+        assert_eq!(
+            tag_output_path(&config, tag),
+            PathBuf::from(format!("dist/tags/{tag}/index.html"))
+        );
+    }
+    write("index.md", "---\ntags: ['C++', 'a b', '日本語']\n---\nHome");
+    run_build(Path::new("vss.toml")).unwrap();
+    for tag in ["C++", "a b", "日本語"] {
+        assert!(tag_output_path(&config, tag).is_file());
+    }
+}
+
+#[test]
+fn rejects_tag_patterns_outside_the_site_before_deleting_outputs() {
+    let _site = Site::new();
+    write("dist/keep.txt", "keep");
+    for pattern in [
+        "../{tag}/",
+        "/tags/../../{tag}",
+        "//example.com/{tag}",
+        "https://example.com/{tag}",
+        "C:/{tag}",
+        "tags\\{tag}",
+    ] {
+        write(
+            "vss.toml",
+            &format!("[build.tags]\nurl_pattern = '{pattern}'"),
+        );
+        assert!(
+            run_build(Path::new("vss.toml")).is_err(),
+            "Accepted pattern: {pattern}"
+        );
+        assert_eq!(read("dist/keep.txt"), "keep");
+    }
+}
+
 struct Site {
     original: PathBuf,
     directory: TempDir,

@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use ramhorns::Content;
 use serde::Deserialize;
 use std::{
@@ -25,6 +26,11 @@ pub(crate) enum ChangedFile {
 }
 
 const PARTIALS_DIR: &str = "partials";
+const URL_SEGMENT_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
 
 #[cfg(test)]
 mod tests;
@@ -116,7 +122,7 @@ fn default_layouts() -> String {
 /// パストラバーサル攻撃を防ぐため、危険な文字列を含むタグ名を拒否する
 fn is_safe_tag_name(tag: &str) -> bool {
     // 空のタグ名は不正
-    if tag.is_empty() {
+    if tag.is_empty() || tag == "." {
         return false;
     }
 
@@ -125,8 +131,8 @@ fn is_safe_tag_name(tag: &str) -> bool {
         return false;
     }
 
-    // null バイトを含む場合は不正
-    if tag.contains('\0') {
+    // URL スキーム、Windows のドライブ接頭辞、制御文字を受け付けない。
+    if tag.contains(':') || tag.chars().any(char::is_control) {
         return false;
     }
 
@@ -205,6 +211,16 @@ pub(crate) fn load_config(path: &Path) -> Result<Config> {
         .with_context(|| format!("Failed to read config file: {}", path.display()))?;
     let config: Config = toml::from_str(&content)
         .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
+    let pattern = &config.build.tags.url_pattern;
+    let relative = pattern.trim_start_matches('/');
+    anyhow::ensure!(
+        !relative.is_empty()
+            && !pattern.starts_with("//")
+            && !pattern.contains([':', '\\'])
+            && !pattern.chars().any(char::is_control)
+            && !relative.split('/').any(|part| matches!(part, "." | "..")),
+        "Tag URL pattern must be a path inside the site"
+    );
     Ok(config)
 }
 
@@ -460,9 +476,10 @@ fn process_markdown_file(
         .map(|tags_vec| {
             tags_vec
                 .iter()
+                .filter(|tag_name| is_safe_tag_name(tag_name))
                 .map(|tag_name| Tag {
                     name: tag_name.clone(),
-                    url: config.build.tags.url_pattern.replace("{tag}", tag_name),
+                    url: tag_url(config, tag_name),
                 })
                 .collect()
         })
@@ -703,6 +720,17 @@ fn collect_post_metadata(paths: &[PathBuf]) -> Result<Vec<PostMetadata>> {
         }
     }
     Ok(posts)
+}
+
+fn tag_url(config: &Config, tag: &str) -> String {
+    let path = config.build.tags.url_pattern.replace("{tag}", tag);
+    let encoded = path
+        .trim_start_matches('/')
+        .split('/')
+        .map(|segment| utf8_percent_encode(segment, URL_SEGMENT_ENCODE_SET).to_string())
+        .collect::<Vec<_>>()
+        .join("/");
+    format!("/{encoded}")
 }
 
 fn tag_output_path(config: &Config, tag: &str) -> PathBuf {

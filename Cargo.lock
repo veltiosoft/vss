@@ -2216,6 +2216,7 @@ dependencies = [
  "noargs",
  "notify",
  "notify-debouncer-full",
+ "percent-encoding",
  "ramhorns",
  "self_update",
  "semver",
