@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0"
 axum = "0.7"
-gray_matter = "0.2"
+gray_matter = { version = "0.2", default-features = false }
 markdown = "1.0.0"
 noargs = "0.4.1"
 percent-encoding = "2.3"

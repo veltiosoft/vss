@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use ramhorns::Content;
-use serde::Deserialize;
+use serde::{
+    Deserialize, Deserializer,
+    de::{self, SeqAccess, Visitor},
+};
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -26,6 +29,9 @@ pub(crate) enum ChangedFile {
 }
 
 const PARTIALS_DIR: &str = "partials";
+const MAX_FRONTMATTER_BYTES: usize = 65_536;
+const MAX_TAGS: usize = 128;
+const MAX_TAG_BYTES: usize = 256;
 const URL_SEGMENT_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
     .remove(b'_')
@@ -152,8 +158,60 @@ struct FrontMatter {
     pub_datetime: String,
     #[serde(default)]
     post_slug: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_tags")]
     tags: Option<Vec<String>>,
+}
+
+fn deserialize_tags<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<String>>, D::Error> {
+    struct TagsVisitor;
+
+    impl<'de> Visitor<'de> for TagsVisitor {
+        type Value = Option<Vec<String>>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(
+                formatter,
+                "at most {MAX_TAGS} tags of at most {MAX_TAG_BYTES} bytes each"
+            )
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D: Deserializer<'de>>(
+            self,
+            deserializer: D,
+        ) -> Result<Self::Value, D::Error> {
+            deserializer.deserialize_seq(self)
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut sequence: A) -> Result<Self::Value, A::Error> {
+            let mut tags = Vec::new();
+            while let Some(tag) = sequence.next_element::<String>()? {
+                if tags.len() == MAX_TAGS {
+                    return Err(de::Error::custom(format!(
+                        "Too many tags (maximum {MAX_TAGS})"
+                    )));
+                }
+                if tag.len() > MAX_TAG_BYTES {
+                    return Err(de::Error::custom(format!(
+                        "Tag exceeds {MAX_TAG_BYTES} bytes"
+                    )));
+                }
+                tags.push(tag);
+            }
+            Ok(Some(tags))
+        }
+    }
+
+    deserializer.deserialize_option(TagsVisitor)
 }
 
 /// テンプレートレンダリング用のコンテキスト
@@ -183,7 +241,7 @@ struct Tag {
 }
 
 /// タグページ生成用の投稿メタデータ
-#[derive(Content, Clone)]
+#[derive(Content)]
 struct PostMetadata {
     title: String,
     description: String,
@@ -200,7 +258,7 @@ struct TagPageContext<'a> {
     site_description: String,
     base_url: String,
     tag_name: String,
-    posts: Vec<PostMetadata>,
+    posts: Vec<&'a PostMetadata>,
     #[ramhorns(flatten)]
     partials: &'a HashMap<String, String>,
 }
@@ -226,14 +284,36 @@ pub(crate) fn load_config(path: &Path) -> Result<Config> {
 
 /// Frontmatter とコンテンツを解析する
 fn parse_frontmatter(content: &str) -> Result<(FrontMatter, String)> {
-    let matter = gray_matter::Matter::<gray_matter::engine::YAML>::new();
+    // 区切りの抽出では YAML ツリーを作らず、型に直接デシリアライズする。
+    struct RawFrontMatter;
+    impl gray_matter::engine::Engine for RawFrontMatter {
+        fn parse(_: &str) -> gray_matter::Pod {
+            gray_matter::Pod::Null
+        }
+    }
+
+    if let Some((first_line, rest)) = content.split_once('\n')
+        && first_line.trim_end() == "---"
+    {
+        let mut bytes = 0;
+        for line in rest.split_inclusive('\n') {
+            if line.trim_end() == "---" {
+                break;
+            }
+            bytes += line.len();
+            anyhow::ensure!(
+                bytes <= MAX_FRONTMATTER_BYTES,
+                "Front matter exceeds {MAX_FRONTMATTER_BYTES} bytes"
+            );
+        }
+    }
+    let matter = gray_matter::Matter::<RawFrontMatter>::new();
     let parsed = matter.parse(content);
 
-    let frontmatter = if let Some(data) = parsed.data {
-        // Pod を deserialize する
-        data.deserialize().unwrap_or_default()
-    } else {
+    let frontmatter = if parsed.matter.is_empty() {
         FrontMatter::default()
+    } else {
+        serde_yaml::from_str(&parsed.matter).context("Invalid YAML front matter")?
     };
 
     Ok((frontmatter, parsed.content))
@@ -256,7 +336,8 @@ fn load_markdown_partials(paths: &[PathBuf], config: &Config) -> Result<HashMap<
     for path in paths {
         let content = read_source_file(path)
             .with_context(|| format!("Failed to read markdown partial: {}", path.display()))?;
-        let (_, markdown_content) = parse_frontmatter(&content)?;
+        let (_, markdown_content) = parse_frontmatter(&content)
+            .with_context(|| format!("Failed to parse markdown partial: {}", path.display()))?;
         let html = markdown_to_html(
             &markdown_content,
             config.build.markdown.allow_dangerous_html,
@@ -453,7 +534,8 @@ fn process_markdown_file(
         .with_context(|| format!("Failed to read markdown file: {}", md_path.display()))?;
 
     // Frontmatter を解析
-    let (frontmatter, markdown_content) = parse_frontmatter(&content)?;
+    let (frontmatter, markdown_content) = parse_frontmatter(&content)
+        .with_context(|| format!("Failed to parse markdown file: {}", md_path.display()))?;
 
     // Markdown を HTML に変換
     let html_content = markdown_to_html(
@@ -549,35 +631,29 @@ fn generate_tag_pages(
     }
 
     // タグごとに投稿をグループ化
-    let mut tag_to_posts: HashMap<String, Vec<PostMetadata>> = HashMap::new();
+    let mut tag_to_posts: HashMap<&str, Vec<&PostMetadata>> = HashMap::new();
 
-    for post in all_posts {
+    for post in &all_posts {
         if let Some(tags_vec) = &post.tags {
             for tag_name in tags_vec {
+                if !is_safe_tag_name(tag_name) {
+                    continue;
+                }
                 tag_to_posts
-                    .entry(tag_name.clone())
+                    .entry(tag_name.as_str())
                     .or_default()
-                    .push(post.clone());
+                    .push(post);
             }
         }
     }
 
     // 各タグのページを生成
     for (tag_name, posts) in tag_to_posts {
-        // タグ名の安全性を検証（パストラバーサル攻撃を防ぐ）
-        if !is_safe_tag_name(&tag_name) {
-            eprintln!(
-                "[WARN] Skipping unsafe tag name: {:?} (contains path traversal characters)",
-                tag_name
-            );
-            continue;
-        }
-
         let context = TagPageContext {
             site_title: config.site_title.clone(),
             site_description: config.site_description.clone(),
             base_url: config.base_url.clone(),
-            tag_name: tag_name.clone(),
+            tag_name: tag_name.to_string(),
             posts,
             partials,
         };
@@ -595,7 +671,7 @@ fn generate_tag_pages(
         // レンダリング
         let rendered = template.render(&context);
 
-        let output_path = tag_output_path(config, &tag_name);
+        let output_path = tag_output_path(config, tag_name);
 
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)
@@ -714,7 +790,8 @@ fn collect_post_metadata(paths: &[PathBuf]) -> Result<Vec<PostMetadata>> {
     for path in paths {
         let content = read_source_file(path)
             .with_context(|| format!("Failed to read markdown file: {}", path.display()))?;
-        let (frontmatter, _) = parse_frontmatter(&content)?;
+        let (frontmatter, _) = parse_frontmatter(&content)
+            .with_context(|| format!("Failed to parse markdown file: {}", path.display()))?;
         if let Some(post) = post_metadata(frontmatter, &path.with_extension("html")) {
             posts.push(post);
         }

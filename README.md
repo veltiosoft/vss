@@ -13,6 +13,11 @@ templates, static files, and directories containing them. Use regular files and
 directories for content you want to publish. In `vss serve`, replacing an input
 with a symbolic link triggers a full rebuild that removes its previous output.
 
+YAML front matter is limited to 64 KiB per file. Each file can have at most
+128 tags, with at most 256 UTF-8 bytes per tag. These limits also apply to
+Markdown partials. Invalid front matter or exceeded limits cause a build error;
+the Markdown body is not subject to the front matter size limit.
+
 ## Markdown partials
 
 Place reusable Markdown in a `partials/` directory at the site root (the working

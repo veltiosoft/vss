@@ -9,6 +9,117 @@ use tempfile::TempDir;
 static CWD: Mutex<()> = Mutex::new(());
 
 #[test]
+fn rejects_frontmatter_resource_amplification_before_building_pages() {
+    let too_large = format!("---\ntitle: {}\n---\nHome", "x".repeat(65_536));
+    assert!(parse_frontmatter(&too_large).is_err());
+    let too_many_tags = format!("---\ntags: [{}]\n---\nHome", vec!["news"; 129].join(","));
+    assert!(parse_frontmatter(&too_many_tags).is_err());
+    let long_tag = format!("---\ntags: ['{}']\n---\nHome", "x".repeat(257));
+    assert!(parse_frontmatter(&long_tag).is_err());
+    let nested_aliases = "---\na: &a [x, x, x, x]\nb: &b [*a, *a, *a, *a]\nc: &c [*b, *b, *b, *b]\ntags: [*c, *c, *c, *c]\n---\nHome";
+    assert!(parse_frontmatter(nested_aliases).is_err());
+    let aliased_tags = format!(
+        "---\nname: &name news\ntags: [{}]\n---\nHome",
+        vec!["*name"; 129].join(",")
+    );
+    assert!(parse_frontmatter(&aliased_tags).is_err());
+}
+
+#[test]
+fn frontmatter_limits_accept_boundaries_and_preserve_plain_markdown() {
+    let boundary = format!(
+        "---\ntitle: {}\n---\nHome",
+        "x".repeat(MAX_FRONTMATTER_BYTES - 8)
+    );
+    assert!(parse_frontmatter(&boundary).is_ok());
+    let too_much_whitespace = format!("---\n{}\n---\nHome", " ".repeat(MAX_FRONTMATTER_BYTES));
+    assert!(parse_frontmatter(&too_much_whitespace).is_err());
+    let tags = vec!["x".repeat(MAX_TAG_BYTES); MAX_TAGS].join(",");
+    let (metadata, content) =
+        parse_frontmatter(&format!("---\ntags: [{tags}]\n---\nHome")).unwrap();
+    assert_eq!(metadata.tags.unwrap().len(), MAX_TAGS);
+    assert_eq!(content, "Home");
+    let plain = "x".repeat(MAX_FRONTMATTER_BYTES + 1);
+    assert_eq!(parse_frontmatter(&plain).unwrap().1, plain);
+    assert!(
+        parse_frontmatter("---\ntags: null\n---\nHome")
+            .unwrap()
+            .0
+            .tags
+            .is_none()
+    );
+    assert!(
+        parse_frontmatter("---\ntags: []\n---\nHome")
+            .unwrap()
+            .0
+            .tags
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn parses_typed_frontmatter_without_expanding_unused_alias_trees() {
+    let mut input =
+        String::from("---\ntitle: &title Home\nauthor: *title\na0: &a0 [x,x,x,x,x,x,x,x,x,x]\n");
+    for level in 1..=4 {
+        input.push_str(&format!(
+            "a{level}: &a{level} [{}]\n",
+            vec![format!("*a{}", level - 1); 10].join(",")
+        ));
+    }
+    input.push_str("tags: [news]\n---\n# Home");
+    let (metadata, contents) = parse_frontmatter(&input.replace('\n', "\r\n")).unwrap();
+    assert_eq!(metadata.title, "Home");
+    assert_eq!(metadata.author, "Home");
+    assert_eq!(metadata.tags.unwrap(), ["news"]);
+    assert_eq!(contents, "# Home");
+    assert!(parse_frontmatter("---\ntitle: &a [*a]\n---\nHome").is_err());
+    assert!(parse_frontmatter("---\ntags: [\n---\nHome").is_err());
+}
+
+#[test]
+fn rejects_excessive_tags_in_incremental_pages_and_partials() {
+    let site = Site::new();
+    let mut builder = site.builder();
+    let tags = format!(
+        "---\ntags: [{}]\n---\nHome",
+        vec!["news"; MAX_TAGS + 1].join(",")
+    );
+    write("index.md", &tags);
+    assert!(
+        builder
+            .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+            .is_err()
+    );
+    write("index.md", "# Recovered");
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+        .unwrap();
+    write("partials/news.md", &tags);
+    assert!(run_build(Path::new("vss.toml")).is_err());
+}
+
+#[test]
+fn renders_all_allowed_tag_pages_with_post_fields() {
+    let _site = Site::new();
+    let tags: Vec<_> = (0..MAX_TAGS).map(|n| format!("tag-{n}")).collect();
+    write(
+        "index.md",
+        &format!("---\ntitle: Tagged\ntags: [{}]\n---\nHome", tags.join(",")),
+    );
+    write(
+        "layouts/tags/default.html",
+        "{{#posts}}{{title}}|{{url}}|{{#tags}}x{{/tags}}{{/posts}}",
+    );
+    run_build(Path::new("vss.toml")).unwrap();
+    for tag in &tags {
+        let page = read(&format!("dist/tags/{tag}/index.html"));
+        assert_eq!(page, format!("Tagged|/index.html|{}", "x".repeat(MAX_TAGS)));
+    }
+}
+
+#[test]
 fn rejects_tag_names_that_can_be_url_schemes_or_windows_prefixes() {
     for tag in [
         "javascript:alert(1)",
