@@ -12,11 +12,18 @@ use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tower_http::services::ServeDir;
 
 use crate::subcommand_build;
+
+/// ビルドを実行し、処理時間を返す
+fn run_build_with_timing(config_path: &Path) -> Result<Duration> {
+    let start = Instant::now();
+    subcommand_build::run_build(config_path)?;
+    Ok(start.elapsed())
+}
 
 /// serve コマンドのエントリポイント
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
@@ -62,8 +69,9 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
 async fn run_serve(config_path: &Path, port: u16) -> Result<()> {
     // 初回ビルド
     println!("[INFO] Running initial build...");
-    subcommand_build::run_build(config_path)?;
+    let duration = run_build_with_timing(config_path)?;
     println!("[INFO] Initial build completed");
+    println!("build finished in {} ms", duration.as_millis());
 
     // 設定を読み込んで dist ディレクトリを取得
     let dist_dir = get_dist_dir(config_path)?;
@@ -145,10 +153,14 @@ fn watch_files(config_path: &Path, _rebuild_flag: Arc<Mutex<bool>>) -> Result<()
 
                 if should_rebuild {
                     println!("[INFO] File changed, rebuilding...");
-                    if let Err(e) = subcommand_build::run_build(&config_path_clone) {
-                        eprintln!("[ERROR] Rebuild failed: {:#}", e);
-                    } else {
-                        println!("[INFO] Rebuild completed");
+                    match run_build_with_timing(&config_path_clone) {
+                        Ok(duration) => {
+                            println!("[INFO] Rebuild completed");
+                            println!("build finished in {} ms", duration.as_millis());
+                        }
+                        Err(e) => {
+                            eprintln!("[ERROR] Rebuild failed: {:#}", e);
+                        }
                     }
                 }
             }
