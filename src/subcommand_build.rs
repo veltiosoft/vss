@@ -9,6 +9,8 @@ use std::{
     time::Instant,
 };
 
+const PARTIALS_DIR: &str = "partials";
+
 /// vss.toml の設定構造
 #[derive(Debug, Deserialize)]
 struct Config {
@@ -111,7 +113,7 @@ struct FrontMatter {
 
 /// テンプレートレンダリング用のコンテキスト
 #[derive(Content)]
-struct RenderContext {
+struct RenderContext<'a> {
     site_title: String,
     site_description: String,
     base_url: String,
@@ -123,6 +125,9 @@ struct RenderContext {
     post_slug: String,
     has_tags: bool,
     tags: Vec<Tag>,
+    // ramhorns はドットを含む名前をそのまま参照するため、partials.* を展開する。
+    #[ramhorns(flatten)]
+    partials: &'a HashMap<String, String>,
 }
 
 /// タグ表示用の構造体
@@ -145,12 +150,14 @@ struct PostMetadata {
 
 /// タグページのレンダリングコンテキスト
 #[derive(Content)]
-struct TagPageContext {
+struct TagPageContext<'a> {
     site_title: String,
     site_description: String,
     base_url: String,
     tag_name: String,
     posts: Vec<PostMetadata>,
+    #[ramhorns(flatten)]
+    partials: &'a HashMap<String, String>,
 }
 
 /// 設定ファイルを読み込む
@@ -186,6 +193,30 @@ fn markdown_to_html(markdown: &str, allow_dangerous_html: bool) -> Result<String
 
     markdown::to_html_with_options(markdown, &options)
         .map_err(|e| anyhow::anyhow!("Failed to convert markdown to HTML: {}", e))
+}
+
+/// ページとして公開しない Markdown 部品を読み込む。
+fn load_markdown_partials(paths: &[PathBuf], config: &Config) -> Result<HashMap<String, String>> {
+    let mut partials = HashMap::new();
+    for path in paths {
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read markdown partial: {}", path.display()))?;
+        let (_, markdown_content) = parse_frontmatter(&content)?;
+        let html = markdown_to_html(
+            &markdown_content,
+            config.build.markdown.allow_dangerous_html,
+        )
+        .with_context(|| format!("Failed to convert markdown partial: {}", path.display()))?;
+        let relative_path = path.strip_prefix(PARTIALS_DIR)?.with_extension("");
+        // テンプレート内では OS によらず / を区切り文字にする。
+        let name = relative_path
+            .iter()
+            .map(|component| component.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        partials.insert(format!("partials.{name}"), html);
+    }
+    Ok(partials)
 }
 
 /// テンプレートを読み込んでキャッシュする
@@ -345,15 +376,21 @@ pub fn run_build(config_path: &Path) -> Result<()> {
         })
         .collect();
 
-    // 6. テンプレートを読み込む
+    // 6. Markdown 部品をページ生成・投稿メタデータ収集の対象から分離する
+    let (partial_files, md_files): (Vec<_>, Vec<_>) = md_files
+        .into_iter()
+        .partition(|path| path.starts_with(PARTIALS_DIR));
+    let partials = load_markdown_partials(&partial_files, &config)?;
+
+    // 7. テンプレートを読み込む
     let templates = load_templates(&config.layouts)?;
 
-    // 7. 投稿メタデータを収集
+    // 8. 投稿メタデータを収集
     let mut all_posts: Vec<PostMetadata> = Vec::new();
 
-    // 8. 各 Markdown ファイルを処理
+    // 9. 各 Markdown ファイルを処理
     for md_path in md_files {
-        let post_metadata = process_markdown_file(&md_path, &config, &templates)?;
+        let post_metadata = process_markdown_file(&md_path, &config, &templates, &partials)?;
         // タグページ生成が有効な場合のみメタデータを収集
         if config.build.tags.enable
             && let Some(metadata) = post_metadata
@@ -362,9 +399,9 @@ pub fn run_build(config_path: &Path) -> Result<()> {
         }
     }
 
-    // 9. タグページを生成
+    // 10. タグページを生成
     if !all_posts.is_empty() {
-        generate_tag_pages(all_posts, &config, &templates)?;
+        generate_tag_pages(all_posts, &config, &templates, &partials)?;
     }
 
     Ok(())
@@ -375,6 +412,7 @@ fn process_markdown_file(
     md_path: &Path,
     config: &Config,
     templates: &HashMap<String, ramhorns::Template<'static>>,
+    partials: &HashMap<String, String>,
 ) -> Result<Option<PostMetadata>> {
     // Markdown ファイルを読み込む
     let content = fs::read_to_string(md_path)
@@ -426,6 +464,7 @@ fn process_markdown_file(
         post_slug: frontmatter.post_slug.clone(),
         has_tags,
         tags,
+        partials,
     };
 
     // テンプレートをレンダリング
@@ -471,6 +510,7 @@ fn generate_tag_pages(
     all_posts: Vec<PostMetadata>,
     config: &Config,
     templates: &HashMap<String, ramhorns::Template<'static>>,
+    partials: &HashMap<String, String>,
 ) -> Result<()> {
     // タグページ生成が無効な場合は何もしない
     if !config.build.tags.enable {
@@ -500,6 +540,7 @@ fn generate_tag_pages(
             base_url: config.base_url.clone(),
             tag_name: tag_name.clone(),
             posts,
+            partials,
         };
 
         // テンプレート検索（設定から取得）

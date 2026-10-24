@@ -11,7 +11,20 @@
 
 ## main
 
-- [ADD] `serve` コマンドで初回ビルドおよび再ビルド時に処理時間を表示
+- [ADD] `serve` コマンドで初回ビルドおよび再ビルド時に処理時間を表示する
+
+## v0.19.1
+
+- [FIX] Immutable Releases が有効な場合に配布バイナリを追加できない問題を修正
+  - ドラフトリリースに全プラットフォームの成果物を追加し、すべてのビルドが成功した後で正式公開する
+
+## v0.19.0
+
+- [ADD] `partials/` の Markdown をテンプレートに差し込めるようにする
+  - `{{{partials.news}}}` で HTML を参照し、`{{#partials.news}}…{{/partials.news}}` で空のときは欄ごと非表示にできる
+  - 部品は通常ページ・タグページから参照でき、単独のページやタグ一覧の投稿としては出力しない
+  - [#51](https://github.com/veltiosoft/vss/issues/51)
+
 - [FIX] `serve` コマンドで `ls` 実行時にビルドが誤って走る問題を修正
   - `notify-debouncer-mini` から `notify-debouncer-full` に移行し、`EventKind::Access` を除外するようにした
   - [#46](https://github.com/veltiosoft/vss/pull/46)
