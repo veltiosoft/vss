@@ -8,6 +8,13 @@ Read: https://vss.veltiosoft.dev/
 
 ## Input files
 
+Markdown discovery skips directories whose names start with `.`, at any depth
+below the site root. This applies to pages and Markdown partials, so files inside
+`.claude/`, `.github/`, or `posts/.drafts/` are not rendered or included in tag
+pages. The site root itself and dot-prefixed Markdown filenames are still allowed.
+Static files and templates retain their existing behavior, including copying
+`static/.well-known/` and loading explicitly configured dot-prefixed directories.
+
 Symbolic links are excluded from builds, including links to Markdown, partials,
 templates, static files, and directories containing them. Use regular files and
 directories for content you want to publish. In `vss serve`, replacing an input
