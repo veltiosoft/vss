@@ -1,4 +1,5 @@
 use super::*;
+use glob::glob;
 use std::{
     collections::BTreeMap,
     sync::{Mutex, MutexGuard},
@@ -6,6 +7,195 @@ use std::{
 use tempfile::TempDir;
 
 static CWD: Mutex<()> = Mutex::new(());
+
+#[test]
+fn rejects_frontmatter_resource_amplification_before_building_pages() {
+    let too_large = format!("---\ntitle: {}\n---\nHome", "x".repeat(65_536));
+    assert!(parse_frontmatter(&too_large).is_err());
+    let too_many_tags = format!("---\ntags: [{}]\n---\nHome", vec!["news"; 129].join(","));
+    assert!(parse_frontmatter(&too_many_tags).is_err());
+    let long_tag = format!("---\ntags: ['{}']\n---\nHome", "x".repeat(257));
+    assert!(parse_frontmatter(&long_tag).is_err());
+    let nested_aliases = "---\na: &a [x, x, x, x]\nb: &b [*a, *a, *a, *a]\nc: &c [*b, *b, *b, *b]\ntags: [*c, *c, *c, *c]\n---\nHome";
+    assert!(parse_frontmatter(nested_aliases).is_err());
+    let aliased_tags = format!(
+        "---\nname: &name news\ntags: [{}]\n---\nHome",
+        vec!["*name"; 129].join(",")
+    );
+    assert!(parse_frontmatter(&aliased_tags).is_err());
+}
+
+#[test]
+fn frontmatter_limits_accept_boundaries_and_preserve_plain_markdown() {
+    let boundary = format!(
+        "---\ntitle: {}\n---\nHome",
+        "x".repeat(MAX_FRONTMATTER_BYTES - 8)
+    );
+    assert!(parse_frontmatter(&boundary).is_ok());
+    let too_much_whitespace = format!("---\n{}\n---\nHome", " ".repeat(MAX_FRONTMATTER_BYTES));
+    assert!(parse_frontmatter(&too_much_whitespace).is_err());
+    let tags = vec!["x".repeat(MAX_TAG_BYTES); MAX_TAGS].join(",");
+    let (metadata, content) =
+        parse_frontmatter(&format!("---\ntags: [{tags}]\n---\nHome")).unwrap();
+    assert_eq!(metadata.tags.unwrap().len(), MAX_TAGS);
+    assert_eq!(content, "Home");
+    let plain = "x".repeat(MAX_FRONTMATTER_BYTES + 1);
+    assert_eq!(parse_frontmatter(&plain).unwrap().1, plain);
+    assert!(
+        parse_frontmatter("---\ntags: null\n---\nHome")
+            .unwrap()
+            .0
+            .tags
+            .is_none()
+    );
+    assert!(
+        parse_frontmatter("---\ntags: []\n---\nHome")
+            .unwrap()
+            .0
+            .tags
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn parses_typed_frontmatter_without_expanding_unused_alias_trees() {
+    let mut input =
+        String::from("---\ntitle: &title Home\nauthor: *title\na0: &a0 [x,x,x,x,x,x,x,x,x,x]\n");
+    for level in 1..=4 {
+        input.push_str(&format!(
+            "a{level}: &a{level} [{}]\n",
+            vec![format!("*a{}", level - 1); 10].join(",")
+        ));
+    }
+    input.push_str("tags: [news]\n---\n# Home");
+    let (metadata, contents) = parse_frontmatter(&input.replace('\n', "\r\n")).unwrap();
+    assert_eq!(metadata.title, "Home");
+    assert_eq!(metadata.author, "Home");
+    assert_eq!(metadata.tags.unwrap(), ["news"]);
+    assert_eq!(contents, "# Home");
+    assert!(parse_frontmatter("---\ntitle: &a [*a]\n---\nHome").is_err());
+    assert!(parse_frontmatter("---\ntags: [\n---\nHome").is_err());
+}
+
+#[test]
+fn rejects_excessive_tags_in_incremental_pages_and_partials() {
+    let site = Site::new();
+    let mut builder = site.builder();
+    let tags = format!(
+        "---\ntags: [{}]\n---\nHome",
+        vec!["news"; MAX_TAGS + 1].join(",")
+    );
+    write("index.md", &tags);
+    assert!(
+        builder
+            .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+            .is_err()
+    );
+    write("index.md", "# Recovered");
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+        .unwrap();
+    write("partials/news.md", &tags);
+    assert!(run_build(Path::new("vss.toml")).is_err());
+}
+
+#[test]
+fn renders_all_allowed_tag_pages_with_post_fields() {
+    let _site = Site::new();
+    let tags: Vec<_> = (0..MAX_TAGS).map(|n| format!("tag-{n}")).collect();
+    write(
+        "index.md",
+        &format!("---\ntitle: Tagged\ntags: [{}]\n---\nHome", tags.join(",")),
+    );
+    write(
+        "layouts/tags/default.html",
+        "{{#posts}}{{title}}|{{url}}|{{#tags}}x{{/tags}}{{/posts}}",
+    );
+    run_build(Path::new("vss.toml")).unwrap();
+    for tag in &tags {
+        let page = read(&format!("dist/tags/{tag}/index.html"));
+        assert_eq!(page, format!("Tagged|/index.html|{}", "x".repeat(MAX_TAGS)));
+    }
+}
+
+#[test]
+fn rejects_tag_names_that_can_be_url_schemes_or_windows_prefixes() {
+    for tag in [
+        "javascript:alert(1)",
+        "C:escape",
+        "data:text/html,test",
+        ".",
+        "a\nb",
+    ] {
+        assert!(!is_safe_tag_name(tag), "Accepted unsafe tag: {tag:?}");
+    }
+}
+
+#[test]
+fn relative_tag_patterns_cannot_publish_javascript_links() {
+    let _site = Site::new();
+    write("vss.toml", "[build.tags]\nurl_pattern = '{tag}.html'");
+    write(
+        "layouts/default.html",
+        "{{#tags}}<a href=\"{{url}}\">{{name}}</a>{{/tags}}",
+    );
+    write(
+        "index.md",
+        "---\ntags: ['javascript:alert(1)', 'javascript:alert(1)//', news]\n---\nHome",
+    );
+    run_build(Path::new("vss.toml")).unwrap();
+    assert_eq!(read("dist/index.html"), "<a href=\"/news.html\">news</a>");
+    assert!(Path::new("dist/news.html").exists());
+    assert!(!Path::new("dist/javascript:alert(1).html").exists());
+}
+
+#[test]
+fn tag_urls_encode_path_characters_and_keep_output_paths_consistent() {
+    let _site = Site::new();
+    let config = load_config(Path::new("vss.toml")).unwrap();
+    for (tag, encoded) in [
+        ("C++", "C%2B%2B"),
+        ("a b", "a%20b"),
+        ("a#b?c%20", "a%23b%3Fc%2520"),
+        ("日本語", "%E6%97%A5%E6%9C%AC%E8%AA%9E"),
+    ] {
+        assert_eq!(tag_url(&config, tag), format!("/tags/{encoded}/"));
+        assert_eq!(
+            tag_output_path(&config, tag),
+            PathBuf::from(format!("dist/tags/{tag}/index.html"))
+        );
+    }
+    write("index.md", "---\ntags: ['C++', 'a b', '日本語']\n---\nHome");
+    run_build(Path::new("vss.toml")).unwrap();
+    for tag in ["C++", "a b", "日本語"] {
+        assert!(tag_output_path(&config, tag).is_file());
+    }
+}
+
+#[test]
+fn rejects_tag_patterns_outside_the_site_before_deleting_outputs() {
+    let _site = Site::new();
+    write("dist/keep.txt", "keep");
+    for pattern in [
+        "../{tag}/",
+        "/tags/../../{tag}",
+        "//example.com/{tag}",
+        "https://example.com/{tag}",
+        "C:/{tag}",
+        "tags\\{tag}",
+    ] {
+        write(
+            "vss.toml",
+            &format!("[build.tags]\nurl_pattern = '{pattern}'"),
+        );
+        assert!(
+            run_build(Path::new("vss.toml")).is_err(),
+            "Accepted pattern: {pattern}"
+        );
+        assert_eq!(read("dist/keep.txt"), "keep");
+    }
+}
 
 struct Site {
     original: PathBuf,
@@ -440,5 +630,87 @@ fn detects_missing_inputs_when_only_the_new_path_is_reported() {
     assert!(builder.has_missing_inputs());
     builder.rebuild(&[ChangedFile::Config]).unwrap();
     assert!(!Path::new("dist/renamed.html").exists());
+    matches_full_build("dist");
+}
+
+#[cfg(unix)]
+#[test]
+fn does_not_publish_symlinked_files_or_directories() {
+    use std::os::unix::fs::symlink;
+
+    let _site = Site::new();
+    let outside = tempfile::tempdir().unwrap();
+    fs::write(outside.path().join("secret.txt"), "PRIVATE SENTINEL").unwrap();
+    fs::write(outside.path().join("secret.md"), "PRIVATE SENTINEL").unwrap();
+    for path in ["static/leak.txt", "leak.md", "layouts/other.html"] {
+        symlink(outside.path().join("secret.txt"), path).unwrap();
+    }
+    fs::create_dir_all("partials").unwrap();
+    symlink(outside.path().join("secret.txt"), "partials/news.md").unwrap();
+    symlink(outside.path(), "static/external").unwrap();
+    symlink(outside.path(), "external").unwrap();
+    symlink(".", "cycle").unwrap();
+    symlink("missing", "broken.md").unwrap();
+    run_build(Path::new("vss.toml")).unwrap();
+    let outputs = output_tree("dist");
+    assert!(
+        outputs
+            .values()
+            .all(|bytes| !String::from_utf8_lossy(bytes).contains("PRIVATE SENTINEL"))
+    );
+    assert!(!Path::new("dist/leak.txt").exists());
+    assert!(!Path::new("dist/leak.html").exists());
+    assert!(!Path::new("dist/external").exists());
+    assert!(!Path::new("dist/cycle").exists());
+    assert!(!Path::new("dist/broken.html").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn does_not_follow_symlinked_source_roots_or_their_ancestors() {
+    use std::os::unix::fs::symlink;
+
+    let _site = Site::new();
+    let outside = tempfile::tempdir().unwrap();
+    fs::create_dir(outside.path().join("assets")).unwrap();
+    fs::write(outside.path().join("assets/secret.txt"), "PRIVATE SENTINEL").unwrap();
+    symlink(outside.path(), "linked").unwrap();
+    for directory in ["linked", "linked/assets"] {
+        write("vss.toml", &format!("static = '{directory}'"));
+        run_build(Path::new("vss.toml")).unwrap();
+        assert!(
+            output_tree("dist")
+                .values()
+                .all(|bytes| !String::from_utf8_lossy(bytes).contains("PRIVATE SENTINEL"))
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn incremental_build_removes_outputs_when_inputs_become_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let site = Site::new();
+    let outside = tempfile::tempdir().unwrap();
+    fs::write(outside.path().join("secret.txt"), "PRIVATE SENTINEL").unwrap();
+    let mut builder = site.builder();
+    fs::remove_file("static/style.css").unwrap();
+    symlink(outside.path().join("secret.txt"), "static/style.css").unwrap();
+    builder
+        .rebuild(&[ChangedFile::Static(site.path("static/style.css"))])
+        .unwrap();
+    assert!(!Path::new("dist/style.css").exists());
+    fs::remove_file("other.md").unwrap();
+    symlink(outside.path().join("secret.txt"), "other.md").unwrap();
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path("other.md"))])
+        .unwrap();
+    assert!(!Path::new("dist/other.html").exists());
+    symlink(outside.path().join("secret.txt"), "static/new.txt").unwrap();
+    builder
+        .rebuild(&[ChangedFile::Static(site.path("static/new.txt"))])
+        .unwrap();
+    assert!(!Path::new("dist/new.txt").exists());
     matches_full_build("dist");
 }

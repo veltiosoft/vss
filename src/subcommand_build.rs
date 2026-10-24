@@ -1,13 +1,17 @@
 use anyhow::{Context, Result};
-use glob::glob;
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use ramhorns::Content;
-use serde::Deserialize;
+use serde::{
+    Deserialize, Deserializer,
+    de::{self, SeqAccess, Visitor},
+};
 use std::{
     collections::{HashMap, HashSet},
     fs,
     path::{Component, Path, PathBuf},
     time::Instant,
 };
+use walkdir::WalkDir;
 
 /// 変更されたファイルの種別
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -25,6 +29,14 @@ pub(crate) enum ChangedFile {
 }
 
 const PARTIALS_DIR: &str = "partials";
+const MAX_FRONTMATTER_BYTES: usize = 65_536;
+const MAX_TAGS: usize = 128;
+const MAX_TAG_BYTES: usize = 256;
+const URL_SEGMENT_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
 
 #[cfg(test)]
 mod tests;
@@ -116,7 +128,7 @@ fn default_layouts() -> String {
 /// パストラバーサル攻撃を防ぐため、危険な文字列を含むタグ名を拒否する
 fn is_safe_tag_name(tag: &str) -> bool {
     // 空のタグ名は不正
-    if tag.is_empty() {
+    if tag.is_empty() || tag == "." {
         return false;
     }
 
@@ -125,8 +137,8 @@ fn is_safe_tag_name(tag: &str) -> bool {
         return false;
     }
 
-    // null バイトを含む場合は不正
-    if tag.contains('\0') {
+    // URL スキーム、Windows のドライブ接頭辞、制御文字を受け付けない。
+    if tag.contains(':') || tag.chars().any(char::is_control) {
         return false;
     }
 
@@ -146,8 +158,60 @@ struct FrontMatter {
     pub_datetime: String,
     #[serde(default)]
     post_slug: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_tags")]
     tags: Option<Vec<String>>,
+}
+
+fn deserialize_tags<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<String>>, D::Error> {
+    struct TagsVisitor;
+
+    impl<'de> Visitor<'de> for TagsVisitor {
+        type Value = Option<Vec<String>>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(
+                formatter,
+                "at most {MAX_TAGS} tags of at most {MAX_TAG_BYTES} bytes each"
+            )
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D: Deserializer<'de>>(
+            self,
+            deserializer: D,
+        ) -> Result<Self::Value, D::Error> {
+            deserializer.deserialize_seq(self)
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut sequence: A) -> Result<Self::Value, A::Error> {
+            let mut tags = Vec::new();
+            while let Some(tag) = sequence.next_element::<String>()? {
+                if tags.len() == MAX_TAGS {
+                    return Err(de::Error::custom(format!(
+                        "Too many tags (maximum {MAX_TAGS})"
+                    )));
+                }
+                if tag.len() > MAX_TAG_BYTES {
+                    return Err(de::Error::custom(format!(
+                        "Tag exceeds {MAX_TAG_BYTES} bytes"
+                    )));
+                }
+                tags.push(tag);
+            }
+            Ok(Some(tags))
+        }
+    }
+
+    deserializer.deserialize_option(TagsVisitor)
 }
 
 /// テンプレートレンダリング用のコンテキスト
@@ -177,7 +241,7 @@ struct Tag {
 }
 
 /// タグページ生成用の投稿メタデータ
-#[derive(Content, Clone)]
+#[derive(Content)]
 struct PostMetadata {
     title: String,
     description: String,
@@ -194,7 +258,7 @@ struct TagPageContext<'a> {
     site_description: String,
     base_url: String,
     tag_name: String,
-    posts: Vec<PostMetadata>,
+    posts: Vec<&'a PostMetadata>,
     #[ramhorns(flatten)]
     partials: &'a HashMap<String, String>,
 }
@@ -205,19 +269,51 @@ pub(crate) fn load_config(path: &Path) -> Result<Config> {
         .with_context(|| format!("Failed to read config file: {}", path.display()))?;
     let config: Config = toml::from_str(&content)
         .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
+    let pattern = &config.build.tags.url_pattern;
+    let relative = pattern.trim_start_matches('/');
+    anyhow::ensure!(
+        !relative.is_empty()
+            && !pattern.starts_with("//")
+            && !pattern.contains([':', '\\'])
+            && !pattern.chars().any(char::is_control)
+            && !relative.split('/').any(|part| matches!(part, "." | "..")),
+        "Tag URL pattern must be a path inside the site"
+    );
     Ok(config)
 }
 
 /// Frontmatter とコンテンツを解析する
 fn parse_frontmatter(content: &str) -> Result<(FrontMatter, String)> {
-    let matter = gray_matter::Matter::<gray_matter::engine::YAML>::new();
+    // 区切りの抽出では YAML ツリーを作らず、型に直接デシリアライズする。
+    struct RawFrontMatter;
+    impl gray_matter::engine::Engine for RawFrontMatter {
+        fn parse(_: &str) -> gray_matter::Pod {
+            gray_matter::Pod::Null
+        }
+    }
+
+    if let Some((first_line, rest)) = content.split_once('\n')
+        && first_line.trim_end() == "---"
+    {
+        let mut bytes = 0;
+        for line in rest.split_inclusive('\n') {
+            if line.trim_end() == "---" {
+                break;
+            }
+            bytes += line.len();
+            anyhow::ensure!(
+                bytes <= MAX_FRONTMATTER_BYTES,
+                "Front matter exceeds {MAX_FRONTMATTER_BYTES} bytes"
+            );
+        }
+    }
+    let matter = gray_matter::Matter::<RawFrontMatter>::new();
     let parsed = matter.parse(content);
 
-    let frontmatter = if let Some(data) = parsed.data {
-        // Pod を deserialize する
-        data.deserialize().unwrap_or_default()
-    } else {
+    let frontmatter = if parsed.matter.is_empty() {
         FrontMatter::default()
+    } else {
+        serde_yaml::from_str(&parsed.matter).context("Invalid YAML front matter")?
     };
 
     Ok((frontmatter, parsed.content))
@@ -238,9 +334,10 @@ fn markdown_to_html(markdown: &str, allow_dangerous_html: bool) -> Result<String
 fn load_markdown_partials(paths: &[PathBuf], config: &Config) -> Result<HashMap<String, String>> {
     let mut partials = HashMap::new();
     for path in paths {
-        let content = fs::read_to_string(path)
+        let content = read_source_file(path)
             .with_context(|| format!("Failed to read markdown partial: {}", path.display()))?;
-        let (_, markdown_content) = parse_frontmatter(&content)?;
+        let (_, markdown_content) = parse_frontmatter(&content)
+            .with_context(|| format!("Failed to parse markdown partial: {}", path.display()))?;
         let html = markdown_to_html(
             &markdown_content,
             config.build.markdown.allow_dangerous_html,
@@ -263,23 +360,16 @@ fn load_templates(layouts_dir: &str) -> Result<HashMap<String, ramhorns::Templat
     let mut templates = HashMap::new();
     let root = std::env::current_dir().context("Failed to get current directory")?;
     let layouts_path = absolute_path(&root, Path::new(layouts_dir));
-    let pattern = format!(
-        "{}/**/*.html",
-        glob::Pattern::escape(&layouts_path.to_string_lossy())
-    );
-    for entry in glob(&pattern).context("Failed to read template glob pattern")? {
-        let path = entry.context("Failed to read template entry")?;
-        if path.is_file() {
-            let template_content = fs::read_to_string(&path)
-                .with_context(|| format!("Failed to read template: {}", path.display()))?;
-            let template = ramhorns::Template::new(template_content)
-                .with_context(|| format!("Failed to parse template: {}", path.display()))?;
+    for path in source_files(&layouts_path, Some("html"), &[])? {
+        let template_content = read_source_file(&path)
+            .with_context(|| format!("Failed to read template: {}", path.display()))?;
+        let template = ramhorns::Template::new(template_content)
+            .with_context(|| format!("Failed to parse template: {}", path.display()))?;
 
-            // layouts/ からの相対パスをキーとする
-            if let Ok(rel_path) = path.strip_prefix(&layouts_path) {
-                let key = rel_path.to_string_lossy().to_string();
-                templates.insert(key, template);
-            }
+        // layouts/ からの相対パスをキーとする
+        if let Ok(rel_path) = path.strip_prefix(&layouts_path) {
+            let key = rel_path.to_string_lossy().to_string();
+            templates.insert(key, template);
         }
     }
 
@@ -333,33 +423,26 @@ fn copy_static_files(static_dir: &str, dist_dir: &str) -> Result<()> {
         return Ok(());
     }
 
-    let pattern = format!(
-        "{}/**/*",
-        glob::Pattern::escape(&static_path.to_string_lossy())
-    );
-    for entry in glob(&pattern).context("Failed to read static files glob pattern")? {
-        let src_path = entry.context("Failed to read static file entry")?;
-        if src_path.is_file() {
-            // static/ からの相対パスを取得
-            if let Ok(rel_path) = src_path.strip_prefix(&static_path) {
-                let dest_path = Path::new(dist_dir).join(rel_path);
+    for src_path in source_files(&static_path, None, &[])? {
+        // static/ からの相対パスを取得
+        if let Ok(rel_path) = src_path.strip_prefix(&static_path) {
+            let dest_path = Path::new(dist_dir).join(rel_path);
 
-                // 親ディレクトリを作成
-                if let Some(parent) = dest_path.parent() {
-                    fs::create_dir_all(parent).with_context(|| {
-                        format!("Failed to create directory: {}", parent.display())
-                    })?;
-                }
-
-                // ファイルをコピー
-                fs::copy(&src_path, &dest_path).with_context(|| {
-                    format!(
-                        "Failed to copy file from {} to {}",
-                        src_path.display(),
-                        dest_path.display()
-                    )
-                })?;
+            // 親ディレクトリを作成
+            if let Some(parent) = dest_path.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
             }
+
+            // ファイルをコピー
+            ensure_source_path(&src_path)?;
+            fs::copy(&src_path, &dest_path).with_context(|| {
+                format!(
+                    "Failed to copy file from {} to {}",
+                    src_path.display(),
+                    dest_path.display()
+                )
+            })?;
         }
     }
 
@@ -447,11 +530,12 @@ fn process_markdown_file(
     partials: &HashMap<String, String>,
 ) -> Result<Option<PostMetadata>> {
     // Markdown ファイルを読み込む
-    let content = fs::read_to_string(md_path)
+    let content = read_source_file(md_path)
         .with_context(|| format!("Failed to read markdown file: {}", md_path.display()))?;
 
     // Frontmatter を解析
-    let (frontmatter, markdown_content) = parse_frontmatter(&content)?;
+    let (frontmatter, markdown_content) = parse_frontmatter(&content)
+        .with_context(|| format!("Failed to parse markdown file: {}", md_path.display()))?;
 
     // Markdown を HTML に変換
     let html_content = markdown_to_html(
@@ -474,9 +558,10 @@ fn process_markdown_file(
         .map(|tags_vec| {
             tags_vec
                 .iter()
+                .filter(|tag_name| is_safe_tag_name(tag_name))
                 .map(|tag_name| Tag {
                     name: tag_name.clone(),
-                    url: config.build.tags.url_pattern.replace("{tag}", tag_name),
+                    url: tag_url(config, tag_name),
                 })
                 .collect()
         })
@@ -546,35 +631,29 @@ fn generate_tag_pages(
     }
 
     // タグごとに投稿をグループ化
-    let mut tag_to_posts: HashMap<String, Vec<PostMetadata>> = HashMap::new();
+    let mut tag_to_posts: HashMap<&str, Vec<&PostMetadata>> = HashMap::new();
 
-    for post in all_posts {
+    for post in &all_posts {
         if let Some(tags_vec) = &post.tags {
             for tag_name in tags_vec {
+                if !is_safe_tag_name(tag_name) {
+                    continue;
+                }
                 tag_to_posts
-                    .entry(tag_name.clone())
+                    .entry(tag_name.as_str())
                     .or_default()
-                    .push(post.clone());
+                    .push(post);
             }
         }
     }
 
     // 各タグのページを生成
     for (tag_name, posts) in tag_to_posts {
-        // タグ名の安全性を検証（パストラバーサル攻撃を防ぐ）
-        if !is_safe_tag_name(&tag_name) {
-            eprintln!(
-                "[WARN] Skipping unsafe tag name: {:?} (contains path traversal characters)",
-                tag_name
-            );
-            continue;
-        }
-
         let context = TagPageContext {
             site_title: config.site_title.clone(),
             site_description: config.site_description.clone(),
             base_url: config.base_url.clone(),
-            tag_name: tag_name.clone(),
+            tag_name: tag_name.to_string(),
             posts,
             partials,
         };
@@ -592,7 +671,7 @@ fn generate_tag_pages(
         // レンダリング
         let rendered = template.render(&context);
 
-        let output_path = tag_output_path(config, &tag_name);
+        let output_path = tag_output_path(config, tag_name);
 
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)
@@ -608,21 +687,60 @@ fn generate_tag_pages(
     Ok(())
 }
 
-fn find_files_with_glob(extension: &str) -> Result<Vec<PathBuf>, glob::PatternError> {
-    // ** は任意の深さのディレクトリ、* は任意のファイル名にマッチ
-    let pattern = format!("**/*.{}", extension);
-    let mut files = Vec::new();
+fn has_symlink_component(path: &Path) -> Result<bool> {
+    for ancestor in path.ancestors() {
+        if ancestor.as_os_str().is_empty() {
+            continue;
+        }
+        if fs::symlink_metadata(ancestor)
+            .with_context(|| format!("Failed to inspect source path: {}", ancestor.display()))?
+            .file_type()
+            .is_symlink()
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
 
-    for entry in glob(&pattern)? {
-        match entry {
-            Ok(path) => {
-                // ファイルであることを確認する処理を追加することもできますが、
-                // 通常は glob パターンがファイルのみにマッチすると期待されます。
-                if path.is_file() {
-                    files.push(path);
-                }
-            }
-            Err(e) => eprintln!("Error processing glob entry: {:?}", e),
+fn ensure_source_path(path: &Path) -> Result<()> {
+    let root = std::env::current_dir().context("Failed to get current directory")?;
+    anyhow::ensure!(
+        !has_symlink_component(&absolute_path(&root, path))?,
+        "Symbolic links are not supported in source paths: {}",
+        path.display()
+    );
+    Ok(())
+}
+
+fn read_source_file(path: &Path) -> Result<String> {
+    ensure_source_path(path)?;
+    Ok(fs::read_to_string(path)?)
+}
+
+/// リンク先のディレクトリへ降りず、通常ファイルだけを列挙する。
+fn source_files(
+    directory: &Path,
+    extension: Option<&str>,
+    excluded: &[PathBuf],
+) -> Result<Vec<PathBuf>> {
+    if !directory.try_exists()? || has_symlink_component(directory)? {
+        return Ok(Vec::new());
+    }
+    let mut files = Vec::new();
+    for entry in WalkDir::new(directory)
+        .follow_links(false)
+        .follow_root_links(false)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_entry(|entry| !excluded.iter().any(|path| entry.path().starts_with(path)))
+    {
+        let entry = entry.context("Failed to enumerate source files")?;
+        if entry.file_type().is_file()
+            && extension
+                .is_none_or(|ext| entry.path().extension().is_some_and(|value| value == ext))
+        {
+            files.push(entry.into_path());
         }
     }
     Ok(files)
@@ -654,15 +772,15 @@ fn site_relative_path(root: &Path, path: &Path) -> Result<PathBuf> {
 fn find_markdown_sources(config: &Config) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
     let root = std::env::current_dir().context("Failed to get current directory")?;
     let dist = absolute_path(&root, Path::new(&config.dist));
-    Ok(find_files_with_glob("md")?
+    Ok(source_files(&root, Some("md"), &[dist])?
         .into_iter()
+        .map(|path| path.strip_prefix(&root).unwrap().to_path_buf())
         .filter(|path| {
-            !absolute_path(&root, path).starts_with(&dist)
-                && !config
-                    .build
-                    .ignore_files
-                    .iter()
-                    .any(|ignore| path.to_string_lossy().contains(ignore))
+            !config
+                .build
+                .ignore_files
+                .iter()
+                .any(|ignore| path.to_string_lossy().contains(ignore))
         })
         .partition(|path| path.starts_with(PARTIALS_DIR)))
 }
@@ -670,14 +788,26 @@ fn find_markdown_sources(config: &Config) -> Result<(Vec<PathBuf>, Vec<PathBuf>)
 fn collect_post_metadata(paths: &[PathBuf]) -> Result<Vec<PostMetadata>> {
     let mut posts = Vec::new();
     for path in paths {
-        let content = fs::read_to_string(path)
+        let content = read_source_file(path)
             .with_context(|| format!("Failed to read markdown file: {}", path.display()))?;
-        let (frontmatter, _) = parse_frontmatter(&content)?;
+        let (frontmatter, _) = parse_frontmatter(&content)
+            .with_context(|| format!("Failed to parse markdown file: {}", path.display()))?;
         if let Some(post) = post_metadata(frontmatter, &path.with_extension("html")) {
             posts.push(post);
         }
     }
     Ok(posts)
+}
+
+fn tag_url(config: &Config, tag: &str) -> String {
+    let path = config.build.tags.url_pattern.replace("{tag}", tag);
+    let encoded = path
+        .trim_start_matches('/')
+        .split('/')
+        .map(|segment| utf8_percent_encode(segment, URL_SEGMENT_ENCODE_SET).to_string())
+        .collect::<Vec<_>>()
+        .join("/");
+    format!("/{encoded}")
 }
 
 fn tag_output_path(config: &Config, tag: &str) -> PathBuf {
@@ -714,19 +844,9 @@ fn input_paths(
         .chain(pages)
         .map(|path| absolute_path(&root, path))
         .collect();
-    for (directory, suffix) in [(&config.r#static, "**/*"), (&config.layouts, "**/*.html")] {
+    for (directory, extension) in [(&config.r#static, None), (&config.layouts, Some("html"))] {
         let directory = absolute_path(&root, Path::new(directory));
-        let pattern = format!(
-            "{}/{}",
-            glob::Pattern::escape(&directory.to_string_lossy()),
-            suffix
-        );
-        for path in glob(&pattern)? {
-            let path = path?;
-            if path.is_file() {
-                paths.insert(path);
-            }
-        }
+        paths.extend(source_files(&directory, extension, &[])?);
     }
     Ok(paths)
 }
@@ -761,7 +881,9 @@ impl IncrementalBuilder {
     }
 
     pub(crate) fn has_missing_inputs(&self) -> bool {
-        self.inputs.iter().any(|path| !path.is_file())
+        self.inputs
+            .iter()
+            .any(|path| !path.is_file() || has_symlink_component(path).unwrap_or(true))
     }
 
     pub(crate) fn rebuild(&mut self, changed_files: &[ChangedFile]) -> Result<()> {
@@ -809,6 +931,10 @@ impl IncrementalBuilder {
                 !absolute.starts_with(&dist_dir),
                 "Changed path is inside the output directory"
             );
+            if !matches!(changed, ChangedFile::Deleted(_)) && has_symlink_component(&absolute)? {
+                full_build = true;
+                continue;
+            }
             if absolute.is_dir() || relative.starts_with(PARTIALS_DIR) {
                 full_build = true;
             }
@@ -950,6 +1076,7 @@ impl IncrementalBuilder {
 }
 
 fn copy_static_file(source: &Path, output: &Path) -> Result<()> {
+    ensure_source_path(source)?;
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
     }
