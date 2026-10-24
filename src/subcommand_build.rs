@@ -360,7 +360,7 @@ fn load_templates(layouts_dir: &str) -> Result<HashMap<String, ramhorns::Templat
     let mut templates = HashMap::new();
     let root = std::env::current_dir().context("Failed to get current directory")?;
     let layouts_path = absolute_path(&root, Path::new(layouts_dir));
-    for path in source_files(&layouts_path, Some("html"), &[])? {
+    for path in source_files(&layouts_path, Some("html"), &[], false)? {
         let template_content = read_source_file(&path)
             .with_context(|| format!("Failed to read template: {}", path.display()))?;
         let template = ramhorns::Template::new(template_content)
@@ -423,7 +423,7 @@ fn copy_static_files(static_dir: &str, dist_dir: &str) -> Result<()> {
         return Ok(());
     }
 
-    for src_path in source_files(&static_path, None, &[])? {
+    for src_path in source_files(&static_path, None, &[], false)? {
         // static/ からの相対パスを取得
         if let Ok(rel_path) = src_path.strip_prefix(&static_path) {
             let dest_path = Path::new(dist_dir).join(rel_path);
@@ -723,6 +723,7 @@ fn source_files(
     directory: &Path,
     extension: Option<&str>,
     excluded: &[PathBuf],
+    skip_dot_directories: bool,
 ) -> Result<Vec<PathBuf>> {
     if !directory.try_exists()? || has_symlink_component(directory)? {
         return Ok(Vec::new());
@@ -733,7 +734,14 @@ fn source_files(
         .follow_root_links(false)
         .sort_by_file_name()
         .into_iter()
-        .filter_entry(|entry| !excluded.iter().any(|path| entry.path().starts_with(path)))
+        .filter_entry(|entry| {
+            // 探索ルートの名前にかかわらず、配下のドットディレクトリだけを除外する。
+            let excluded_dot_directory = skip_dot_directories
+                && entry.depth() > 0
+                && entry.file_type().is_dir()
+                && entry.file_name().to_string_lossy().starts_with('.');
+            !excluded_dot_directory && !excluded.iter().any(|path| entry.path().starts_with(path))
+        })
     {
         let entry = entry.context("Failed to enumerate source files")?;
         if entry.file_type().is_file()
@@ -772,7 +780,7 @@ fn site_relative_path(root: &Path, path: &Path) -> Result<PathBuf> {
 fn find_markdown_sources(config: &Config) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
     let root = std::env::current_dir().context("Failed to get current directory")?;
     let dist = absolute_path(&root, Path::new(&config.dist));
-    Ok(source_files(&root, Some("md"), &[dist])?
+    Ok(source_files(&root, Some("md"), &[dist], true)?
         .into_iter()
         .map(|path| path.strip_prefix(&root).unwrap().to_path_buf())
         .filter(|path| {
@@ -846,7 +854,7 @@ fn input_paths(
         .collect();
     for (directory, extension) in [(&config.r#static, None), (&config.layouts, Some("html"))] {
         let directory = absolute_path(&root, Path::new(directory));
-        paths.extend(source_files(&directory, extension, &[])?);
+        paths.extend(source_files(&directory, extension, &[], false)?);
     }
     Ok(paths)
 }

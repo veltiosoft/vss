@@ -277,6 +277,153 @@ fn matches_full_build(dist: &str) {
 }
 
 #[test]
+fn excludes_dot_directories_from_markdown_pages_partials_and_tags() {
+    let _site = Site::new();
+    for path in [
+        ".claude/skills/example/SKILL.md",
+        ".github/notes.md",
+        ".git/info/notes.md",
+        "posts/.drafts/post.md",
+        "partials/.drafts/news.md",
+    ] {
+        write(
+            path,
+            "---\ntitle: PRIVATE SENTINEL\ntags: [private]\n---\nPRIVATE SENTINEL",
+        );
+    }
+    write("posts.notes/published.md", "Published post");
+    write(".page.md", "A dot-prefixed file, not a directory");
+    write("partials/news.md", "Public partial");
+    write(
+        "layouts/default.html",
+        "{{{contents}}}|{{{partials.news}}}|{{{partials..drafts/news}}}",
+    );
+    run_build(Path::new("vss.toml")).unwrap();
+    assert!(
+        output_tree("dist")
+            .values()
+            .all(|bytes| { !String::from_utf8_lossy(bytes).contains("PRIVATE SENTINEL") })
+    );
+    assert!(!Path::new("dist/tags/private").exists());
+    assert!(!Path::new("dist/.claude").exists());
+    assert!(!Path::new("dist/posts/.drafts").exists());
+    assert!(read("dist/posts.notes/published.html").contains("Published post"));
+    assert!(read("dist/.page.html").contains("A dot-prefixed file"));
+    assert!(read("dist/index.html").contains("Public partial"));
+
+    // Excluded Markdown must not be read or parsed, even when it is invalid.
+    fs::write(".claude/invalid.md", [0xff]).unwrap();
+    fs::write("partials/.drafts/invalid.md", [0xff]).unwrap();
+    run_build(Path::new("vss.toml")).unwrap();
+}
+
+#[test]
+fn preserves_dot_directories_in_static_files_and_templates() {
+    let site = Site::new();
+    write("vss.toml", "[build.tags]\ntemplate = '.internal/tags.html'");
+    write(
+        "layouts/.internal/tags.html",
+        "Internal template: {{tag_name}}",
+    );
+    write("static/.well-known/security.txt", "Contact: example");
+    write(
+        "static/.well-known/readme.md",
+        "Copy this Markdown verbatim",
+    );
+    run_build(Path::new("vss.toml")).unwrap();
+    assert_eq!(read("dist/.well-known/security.txt"), "Contact: example");
+    assert_eq!(
+        read("dist/.well-known/readme.md"),
+        "Copy this Markdown verbatim"
+    );
+    assert!(!Path::new("dist/static/.well-known/readme.html").exists());
+    assert_eq!(read("dist/tags/news/index.html"), "Internal template: news");
+
+    let mut builder = site.builder();
+    write("static/.well-known/readme.md", "Updated static Markdown");
+    write(
+        "layouts/.internal/tags.html",
+        "Updated template: {{tag_name}}",
+    );
+    builder
+        .rebuild(&[
+            ChangedFile::Static(site.path("static/.well-known/readme.md")),
+            ChangedFile::Template(site.path("layouts/.internal/tags.html")),
+        ])
+        .unwrap();
+    assert_eq!(
+        read("dist/.well-known/readme.md"),
+        "Updated static Markdown"
+    );
+    assert_eq!(read("dist/tags/news/index.html"), "Updated template: news");
+    assert!(!Path::new("dist/static/.well-known/readme.html").exists());
+    matches_full_build("dist");
+}
+
+#[test]
+fn builds_dot_named_sites_with_configured_dot_source_directories() {
+    let _site = Site::new();
+    write(".site/vss.toml", "static = '.assets'\nlayouts = '.layouts'");
+    write(".site/index.md", "Visible page");
+    write(
+        ".site/.layouts/default.html",
+        "Explicit template: {{{contents}}}",
+    );
+    write(".site/.assets/.well-known/security.txt", "Public metadata");
+    std::env::set_current_dir(".site").unwrap();
+    run_build(Path::new("vss.toml")).unwrap();
+    assert_eq!(
+        read("dist/index.html"),
+        "Explicit template: <p>Visible page</p>"
+    );
+    assert_eq!(read("dist/.well-known/security.txt"), "Public metadata");
+}
+
+#[test]
+fn incremental_build_excludes_dot_directories_and_removes_hidden_pages() {
+    let site = Site::new();
+    let mut builder = site.builder();
+    let original = output_tree("dist");
+    for path in [
+        ".claude/skills/example/SKILL.md",
+        "partials/.drafts/news.md",
+    ] {
+        write(path, "---\ntags: [private]\n---\nPRIVATE SENTINEL");
+        builder
+            .rebuild(&[ChangedFile::Markdown(site.path(path))])
+            .unwrap();
+        assert_eq!(output_tree("dist"), original);
+        fs::write(path, [0xff]).unwrap();
+        builder
+            .rebuild(&[ChangedFile::Markdown(site.path(path))])
+            .unwrap();
+        assert_eq!(output_tree("dist"), original);
+        fs::remove_file(path).unwrap();
+        builder
+            .rebuild(&[ChangedFile::Deleted(site.path(path))])
+            .unwrap();
+        assert_eq!(output_tree("dist"), original);
+    }
+
+    fs::create_dir(".drafts").unwrap();
+    fs::rename("index.md", ".drafts/index.md").unwrap();
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path(".drafts/index.md"))])
+        .unwrap();
+    assert!(!Path::new("dist/index.html").exists());
+    assert!(!Path::new("dist/.drafts").exists());
+    assert!(!Path::new("dist/tags/news/index.html").exists());
+    matches_full_build("dist");
+
+    fs::rename(".drafts/index.md", "index.md").unwrap();
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+        .unwrap();
+    assert_eq!(output_tree("dist"), original);
+    matches_full_build("dist");
+}
+
+#[test]
 fn edits_only_the_changed_page_and_updates_tag_metadata() {
     let site = Site::new();
     let mut builder = site.builder();
