@@ -6,17 +6,26 @@ use axum::{
     middleware::{self, Next},
     response::Response,
 };
-use notify::event::EventKind;
+use notify::event::{EventKind, ModifyKind};
 use notify_debouncer_full::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::{
+    collections::HashSet,
     net::SocketAddr,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-    time::Duration,
+    sync::{Arc, RwLock},
+    time::{Duration, Instant},
 };
+use tower::ServiceExt;
 use tower_http::services::ServeDir;
 
-use crate::subcommand_build::{self, ChangedFile};
+use crate::subcommand_build::{self, ChangedFile, Config, IncrementalBuilder, absolute_path};
+
+/// ビルドを実行し、処理時間を返す
+fn run_build_with_timing(config_path: &Path) -> Result<Duration> {
+    let start = Instant::now();
+    subcommand_build::run_build(config_path)?;
+    Ok(start.elapsed())
+}
 
 /// serve コマンドのエントリポイント
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
@@ -62,19 +71,15 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
 async fn run_serve(config_path: &Path, port: u16) -> Result<()> {
     // 初回ビルド
     println!("[INFO] Running initial build...");
-    subcommand_build::run_build(config_path)?;
+    let duration = run_build_with_timing(config_path)?;
     println!("[INFO] Initial build completed");
+    println!("build finished in {} ms", duration.as_millis());
 
-    // 設定を読み込んで dist ディレクトリを取得
-    let dist_dir = get_dist_dir(config_path)?;
-
-    // ファイル監視を開始
-    let config_path_clone = config_path.to_path_buf();
-    let rebuild_flag = Arc::new(Mutex::new(false));
-    let rebuild_flag_clone = rebuild_flag.clone();
-
+    let builder = IncrementalBuilder::new(config_path)?;
+    let dist_dir = Arc::new(RwLock::new(PathBuf::from(&builder.config.dist)));
+    let served_dist = Arc::clone(&dist_dir);
     std::thread::spawn(move || {
-        if let Err(e) = watch_files(&config_path_clone, rebuild_flag_clone) {
+        if let Err(e) = watch_files(builder, served_dist) {
             eprintln!("[ERROR] watch: {:#}", e);
         }
     });
@@ -83,10 +88,16 @@ async fn run_serve(config_path: &Path, port: u16) -> Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     println!("[INFO] serving on http://localhost:{}", port);
 
-    let serve_dir = ServeDir::new(&dist_dir).append_index_html_on_directories(true);
-
     let app = Router::new()
-        .fallback_service(serve_dir)
+        .fallback_service(tower::service_fn(move |request: Request| {
+            let dist = dist_dir.read().unwrap_or_else(|e| e.into_inner()).clone();
+            async move {
+                ServeDir::new(dist)
+                    .append_index_html_on_directories(true)
+                    .oneshot(request)
+                    .await
+            }
+        }))
         .layer(middleware::from_fn(html_fallback_middleware));
 
     let listener = tokio::net::TcpListener::bind(addr)
@@ -120,155 +131,183 @@ async fn html_fallback_middleware(mut request: Request, next: Next) -> Response 
 }
 
 /// ファイル監視とホットリロード
-fn watch_files(config_path: &Path, _rebuild_flag: Arc<Mutex<bool>>) -> Result<()> {
-    let config_path_clone = config_path.to_path_buf();
-
-    // 設定を取得（subcommand_build の load_config を直接使用）
-    let config = subcommand_build::load_config(config_path)?;
-    let dist_dir = config.dist.clone();
-    let static_dir = config.r#static.clone();
-    let layouts_dir = config.layouts.clone();
-
-    let current_dir = std::env::current_dir().context("Failed to get current directory")?;
-    let dist_path = current_dir.join(&dist_dir);
-
-    // デバウンサーを作成（300ms の遅延）
+fn watch_files(mut builder: IncrementalBuilder, served_dist: Arc<RwLock<PathBuf>>) -> Result<()> {
+    let root = std::env::current_dir().context("Failed to get current directory")?;
+    let watch_root = root.clone();
+    let mut output_dir = absolute_path(&root, Path::new(&builder.config.dist));
+    let config_path = absolute_path(&root, builder.config_path());
     let mut debouncer = new_debouncer(
         Duration::from_millis(300),
         None,
         move |res: DebounceEventResult| match res {
             Ok(events) => {
-                // dist ディレクトリ外の変更されたファイルを収集
-                let mut changed_files: Vec<ChangedFile> = Vec::new();
-                let mut has_deletion = false;
-
+                let mut changed_files = HashSet::new();
+                let served_dir = absolute_path(
+                    &root,
+                    &served_dist.read().unwrap_or_else(|e| e.into_inner()),
+                );
+                let mut has_input_event = false;
                 for event in &events {
-                    // Access イベント（ls による atime 更新など）は無視
+                    if event.need_rescan() {
+                        changed_files.insert(ChangedFile::Config);
+                    }
                     if matches!(event.kind, EventKind::Access(_)) {
                         continue;
                     }
-
-                    // 削除イベントかどうか判定
-                    let is_remove = matches!(event.kind, EventKind::Remove(_));
-
                     for path in &event.paths {
-                        // dist ディレクトリ内は無視
-                        if path.starts_with(&dist_path) {
+                        let path = absolute_path(&root, path);
+                        if path == root
+                            || path.starts_with(&output_dir)
+                            || path.starts_with(&served_dir)
+                            || !path.starts_with(&root)
+                        {
                             continue;
                         }
-
-                        if is_remove {
-                            // 削除されたファイル
-                            has_deletion = true;
-                            changed_files.push(ChangedFile::Deleted(path.clone()));
-                        } else if let Some(classified) = classify_changed_file(
-                            path,
-                            &config_path_clone,
-                            &static_dir,
-                            &layouts_dir,
-                        ) {
-                            // Config 変更の場合は即座にフルビルド
-                            if matches!(classified, ChangedFile::Config) {
-                                println!("[INFO] Config changed, running full rebuild...");
-                                if let Err(e) = subcommand_build::run_build(&config_path_clone) {
-                                    eprintln!("[ERROR] Full rebuild failed: {:#}", e);
-                                } else {
-                                    println!("[INFO] Full rebuild completed");
-                                }
-                                return;
-                            }
-                            changed_files.push(classified);
+                        has_input_event = true;
+                        // macOS では rename の旧パスが同時に届くとは限らない。
+                        if matches!(event.kind, EventKind::Modify(ModifyKind::Name(_))) {
+                            changed_files.insert(ChangedFile::Config);
+                        }
+                        if let Some(changed) =
+                            classify_changed_file(&path, &root, &config_path, &builder.config)
+                        {
+                            changed_files.insert(changed);
                         }
                     }
                 }
-
+                // 通知に旧パスや rename の種類が欠けていても、消えた入力を見落とさない。
+                if has_input_event && builder.has_missing_inputs() {
+                    changed_files.insert(ChangedFile::Config);
+                }
                 if changed_files.is_empty() {
                     return;
                 }
-
-                // 変更されたファイル数を表示
-                let file_count = changed_files.len();
-                let file_desc = if file_count == 1 {
-                    "1 file".to_string()
-                } else {
-                    format!("{} files", file_count)
-                };
-
-                println!("[INFO] {} changed, rebuilding...", file_desc);
-
-                // 増分ビルドを試行
-                match subcommand_build::run_incremental_build(&config_path_clone, &changed_files) {
+                println!(
+                    "[INFO] {} files changed, rebuilding...",
+                    changed_files.len()
+                );
+                let start = Instant::now();
+                let changed_files: Vec<_> = changed_files.into_iter().collect();
+                // 失敗した全体ビルドが生成したディレクトリも監視から除外する。
+                if let Ok(config) = subcommand_build::load_config(builder.config_path()) {
+                    output_dir = absolute_path(&root, Path::new(&config.dist));
+                }
+                match builder.rebuild(&changed_files) {
                     Ok(()) => {
-                        println!("[INFO] Incremental rebuild completed");
+                        output_dir = absolute_path(&root, Path::new(&builder.config.dist));
+                        *served_dist.write().unwrap_or_else(|e| e.into_inner()) =
+                            PathBuf::from(&builder.config.dist);
+                        println!("[INFO] Rebuild completed");
+                        println!("build finished in {} ms", start.elapsed().as_millis());
                     }
-                    Err(e) => {
-                        // 増分ビルドが失敗した場合（Config 変更など）はフルビルドにフォールバック
-                        let error_msg = format!("{:#}", e);
-                        if error_msg.contains("full rebuild required") || has_deletion {
-                            println!("[INFO] Falling back to full rebuild...");
-                            if let Err(e) = subcommand_build::run_build(&config_path_clone) {
-                                eprintln!("[ERROR] Full rebuild failed: {:#}", e);
-                            } else {
-                                println!("[INFO] Full rebuild completed");
-                            }
-                        } else {
-                            eprintln!("[ERROR] Incremental rebuild failed: {:#}", e);
-                        }
-                    }
+                    Err(e) => eprintln!("[ERROR] Rebuild failed: {:#}", e),
                 }
             }
-            Err(errors) => {
-                eprintln!("[ERROR] watch error: {:?}", errors);
-            }
+            Err(errors) => eprintln!("[ERROR] watch error: {:?}", errors),
         },
     )
     .context("Failed to create file watcher")?;
-
-    // 現在のディレクトリ配下を再帰的に監視
     debouncer
-        .watch(&current_dir, RecursiveMode::Recursive)
+        .watch(&watch_root, RecursiveMode::Recursive)
         .context("Failed to watch directory")?;
-
-    // 監視を継続（このスレッドをブロック）
     loop {
         std::thread::sleep(Duration::from_secs(1));
     }
 }
 
-/// 設定ファイルから dist ディレクトリのパスを取得
-fn get_dist_dir(config_path: &Path) -> Result<String> {
-    let config = subcommand_build::load_config(config_path)?;
-    Ok(config.dist)
-}
-
-/// 変更されたファイルを分類する
 fn classify_changed_file(
     path: &Path,
+    root: &Path,
     config_path: &Path,
-    static_dir: &str,
-    layouts_dir: &str,
+    config: &Config,
 ) -> Option<ChangedFile> {
-    let path_str = path.to_string_lossy();
-
-    // 設定ファイルの変更
     if path == config_path {
         return Some(ChangedFile::Config);
     }
-
-    // 静的ファイルの変更
-    if path.starts_with(static_dir) || path_str.starts_with(&format!("./{}", static_dir)) {
+    if !path.starts_with(root) {
+        return None;
+    }
+    if !path.exists() {
+        return Some(ChangedFile::Deleted(path.to_path_buf()));
+    }
+    if path.starts_with(absolute_path(root, Path::new(&config.r#static))) {
         return Some(ChangedFile::Static(path.to_path_buf()));
     }
-
-    // テンプレートファイルの変更
-    if path.starts_with(layouts_dir) || path_str.starts_with(&format!("./{}", layouts_dir)) {
+    if path.starts_with(absolute_path(root, Path::new(&config.layouts))) {
         return Some(ChangedFile::Template(path.to_path_buf()));
     }
-
-    // Markdown ファイルの変更
-    if path.extension().is_some_and(|ext| ext == "md") {
+    if path.is_dir() {
+        return Some(ChangedFile::Config);
+    }
+    if path.extension().is_some_and(|extension| extension == "md") {
         return Some(ChangedFile::Markdown(path.to_path_buf()));
     }
-
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn classifies_absolute_paths_using_normalized_configuration() {
+        let site = tempfile::tempdir().unwrap();
+        let root = site.path().canonicalize().unwrap();
+        fs::create_dir_all(root.join("assets")).unwrap();
+        fs::create_dir_all(root.join("templates")).unwrap();
+        fs::write(
+            root.join("custom.toml"),
+            "static = './assets'\nlayouts = './templates'",
+        )
+        .unwrap();
+        let config_path = absolute_path(&root, Path::new("./custom.toml"));
+        let config = subcommand_build::load_config(&config_path).unwrap();
+        for path in [
+            "assets/a.css",
+            "assets/readme.md",
+            "templates/default.html",
+            "page.md",
+            "ignored.txt",
+        ] {
+            fs::write(root.join(path), "test").unwrap();
+        }
+        let classify =
+            |path: &str| classify_changed_file(&root.join(path), &root, &config_path, &config);
+        assert_eq!(classify("custom.toml"), Some(ChangedFile::Config));
+        assert_eq!(
+            classify("assets/a.css"),
+            Some(ChangedFile::Static(root.join("assets/a.css")))
+        );
+        assert_eq!(
+            classify("assets/readme.md"),
+            Some(ChangedFile::Static(root.join("assets/readme.md")))
+        );
+        assert_eq!(
+            classify("templates/default.html"),
+            Some(ChangedFile::Template(root.join("templates/default.html")))
+        );
+        assert_eq!(
+            classify("page.md"),
+            Some(ChangedFile::Markdown(root.join("page.md")))
+        );
+        assert_eq!(
+            classify("old.md"),
+            Some(ChangedFile::Deleted(root.join("old.md")))
+        );
+        assert_eq!(
+            classify("removed.directory"),
+            Some(ChangedFile::Deleted(root.join("removed.directory")))
+        );
+        assert_eq!(classify("ignored.txt"), None);
+        assert_eq!(
+            classify_changed_file(
+                &root.parent().unwrap().join("outside.md"),
+                &root,
+                &config_path,
+                &config
+            ),
+            None
+        );
+    }
 }
