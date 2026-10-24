@@ -1,4 +1,5 @@
 use super::*;
+use glob::glob;
 use std::{
     collections::BTreeMap,
     sync::{Mutex, MutexGuard},
@@ -440,5 +441,87 @@ fn detects_missing_inputs_when_only_the_new_path_is_reported() {
     assert!(builder.has_missing_inputs());
     builder.rebuild(&[ChangedFile::Config]).unwrap();
     assert!(!Path::new("dist/renamed.html").exists());
+    matches_full_build("dist");
+}
+
+#[cfg(unix)]
+#[test]
+fn does_not_publish_symlinked_files_or_directories() {
+    use std::os::unix::fs::symlink;
+
+    let _site = Site::new();
+    let outside = tempfile::tempdir().unwrap();
+    fs::write(outside.path().join("secret.txt"), "PRIVATE SENTINEL").unwrap();
+    fs::write(outside.path().join("secret.md"), "PRIVATE SENTINEL").unwrap();
+    for path in ["static/leak.txt", "leak.md", "layouts/other.html"] {
+        symlink(outside.path().join("secret.txt"), path).unwrap();
+    }
+    fs::create_dir_all("partials").unwrap();
+    symlink(outside.path().join("secret.txt"), "partials/news.md").unwrap();
+    symlink(outside.path(), "static/external").unwrap();
+    symlink(outside.path(), "external").unwrap();
+    symlink(".", "cycle").unwrap();
+    symlink("missing", "broken.md").unwrap();
+    run_build(Path::new("vss.toml")).unwrap();
+    let outputs = output_tree("dist");
+    assert!(
+        outputs
+            .values()
+            .all(|bytes| !String::from_utf8_lossy(bytes).contains("PRIVATE SENTINEL"))
+    );
+    assert!(!Path::new("dist/leak.txt").exists());
+    assert!(!Path::new("dist/leak.html").exists());
+    assert!(!Path::new("dist/external").exists());
+    assert!(!Path::new("dist/cycle").exists());
+    assert!(!Path::new("dist/broken.html").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn does_not_follow_symlinked_source_roots_or_their_ancestors() {
+    use std::os::unix::fs::symlink;
+
+    let _site = Site::new();
+    let outside = tempfile::tempdir().unwrap();
+    fs::create_dir(outside.path().join("assets")).unwrap();
+    fs::write(outside.path().join("assets/secret.txt"), "PRIVATE SENTINEL").unwrap();
+    symlink(outside.path(), "linked").unwrap();
+    for directory in ["linked", "linked/assets"] {
+        write("vss.toml", &format!("static = '{directory}'"));
+        run_build(Path::new("vss.toml")).unwrap();
+        assert!(
+            output_tree("dist")
+                .values()
+                .all(|bytes| !String::from_utf8_lossy(bytes).contains("PRIVATE SENTINEL"))
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn incremental_build_removes_outputs_when_inputs_become_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let site = Site::new();
+    let outside = tempfile::tempdir().unwrap();
+    fs::write(outside.path().join("secret.txt"), "PRIVATE SENTINEL").unwrap();
+    let mut builder = site.builder();
+    fs::remove_file("static/style.css").unwrap();
+    symlink(outside.path().join("secret.txt"), "static/style.css").unwrap();
+    builder
+        .rebuild(&[ChangedFile::Static(site.path("static/style.css"))])
+        .unwrap();
+    assert!(!Path::new("dist/style.css").exists());
+    fs::remove_file("other.md").unwrap();
+    symlink(outside.path().join("secret.txt"), "other.md").unwrap();
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path("other.md"))])
+        .unwrap();
+    assert!(!Path::new("dist/other.html").exists());
+    symlink(outside.path().join("secret.txt"), "static/new.txt").unwrap();
+    builder
+        .rebuild(&[ChangedFile::Static(site.path("static/new.txt"))])
+        .unwrap();
+    assert!(!Path::new("dist/new.txt").exists());
     matches_full_build("dist");
 }

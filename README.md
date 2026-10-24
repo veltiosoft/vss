@@ -6,6 +6,13 @@ Veltiosoft Static Site Generator.
 
 Read: https://vss.veltiosoft.dev/
 
+## Input files
+
+Symbolic links are excluded from builds, including links to Markdown, partials,
+templates, static files, and directories containing them. Use regular files and
+directories for content you want to publish. In `vss serve`, replacing an input
+with a symbolic link triggers a full rebuild that removes its previous output.
+
 ## Markdown partials
 
 Place reusable Markdown in a `partials/` directory at the site root (the working
