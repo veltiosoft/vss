@@ -1,0 +1,7 @@
+site_title = "My vss site"
+site_description = "A site built with vss"
+# Set your public HTTP(S) URL before publishing.
+base_url = ""
+
+[build]
+ignore_files = ["README.md"]

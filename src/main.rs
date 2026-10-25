@@ -30,7 +30,7 @@ fn main() -> noargs::Result<()> {
     } else if SERVE_COMMAND.take(&mut args).is_present() {
         vss::subcommand_serve::run(args)?;
     } else if NEW_COMMAND.take(&mut args).is_present() {
-        todo!();
+        vss::subcommand_new::run(args)?;
     } else if SELF_COMMAND.take(&mut args).is_present() {
         vss::subcommand_self::run(args)?;
     } else if let Some(help) = args.finish()? {

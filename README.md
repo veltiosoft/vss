@@ -6,6 +6,23 @@ Veltiosoft Static Site Generator.
 
 Read: https://vss.veltiosoft.dev/
 
+## Create a site
+
+```sh
+vss new my-site
+cd my-site
+vss build
+vss serve
+```
+
+You can also run `vss new .` in an empty directory. The destination must be
+nonexistent or completely empty, including hidden files and directories.
+Existing files are never overwritten; there is no `--force` option.
+Generated text files use UTF-8 and LF line endings on every OS.
+
+Set `base_url` in `vss.toml` to your public URL, then publish the contents of
+`dist/`. The development server rebuilds on changes; reload the browser manually.
+
 ## Input files
 
 Markdown discovery skips directories whose names start with `.`, at any depth

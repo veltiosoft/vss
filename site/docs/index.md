@@ -10,6 +10,8 @@ emoji: "📚"
 
 wip
 
+- [サイトの雛形を作成する](new.html)
+
 ## Frontmatter
 
 - [OGP 画像の指定](og-image.html)

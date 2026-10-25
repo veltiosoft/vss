@@ -21,6 +21,21 @@ jobs:
       - run: cargo check --all
       - run: cargo test --all --locked
 
+  scaffold:
+    name: Scaffold (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - name: Use CRLF checkout on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf true
+      - name: Checkout sources
+        uses: actions/checkout@v5
+      - run: rustup update stable
+      - run: cargo test --locked --test new_command
+
   lints:
     name: Lints
     runs-on: ubuntu-24.04
