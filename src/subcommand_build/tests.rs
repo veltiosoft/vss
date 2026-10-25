@@ -445,6 +445,40 @@ fn edits_only_the_changed_page_and_updates_tag_metadata() {
 }
 
 #[test]
+fn refreshes_og_images_in_incremental_builds_and_after_base_url_changes() {
+    let site = Site::new();
+    write("vss.toml", "base_url = 'https://example.com/blog'");
+    write("layouts/default.html", "{{og_image}}|{{og_image_url}}");
+    write("index.md", "---\nog_image: images/old.png\n---\nHome");
+    run_build(Path::new("vss.toml")).unwrap();
+    assert_eq!(
+        read("dist/index.html"),
+        "images/old.png|https://example.com/blog/images/old.png"
+    );
+    let mut builder = site.builder();
+    write("index.md", "---\nog_image: /images/new.png\n---\nHome");
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+        .unwrap();
+    assert_eq!(
+        read("dist/index.html"),
+        "/images/new.png|https://example.com/images/new.png"
+    );
+    write("vss.toml", "base_url = 'https://new.example.com'");
+    builder.rebuild(&[ChangedFile::Config]).unwrap();
+    assert_eq!(
+        read("dist/index.html"),
+        "/images/new.png|https://new.example.com/images/new.png"
+    );
+    write("index.md", "No image");
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+        .unwrap();
+    assert_eq!(read("dist/index.html"), "|");
+    matches_full_build("dist");
+}
+
+#[test]
 fn copies_and_deletes_static_files_with_absolute_paths_and_mixed_batches() {
     let site = Site::new();
     let mut builder = site.builder();

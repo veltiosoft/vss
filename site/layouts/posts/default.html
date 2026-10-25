@@ -8,7 +8,9 @@
 	<meta property="og:title" content="{{title}} | {{site_title}}" />
 	<meta property="og:description" content="{{description}}" />
 	<meta property="og:type" content="article" />
-	<meta property="og:image" content="{{base_url}}/{{og_image}}" />
+	{{#og_image_url}}
+	<meta property="og:image" content="{{og_image_url}}" />
+	{{/og_image_url}}
 	<meta property="og:url" content="{{base_url}}/{{post_slug}}" />
     <meta name="description" content="{{description}}" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />

@@ -158,6 +158,8 @@ struct FrontMatter {
     pub_datetime: String,
     #[serde(default)]
     post_slug: String,
+    #[serde(default)]
+    og_image: String,
     #[serde(default, deserialize_with = "deserialize_tags")]
     tags: Option<Vec<String>>,
 }
@@ -226,6 +228,8 @@ struct RenderContext<'a> {
     author: String,
     pub_datetime: String,
     post_slug: String,
+    og_image: String,
+    og_image_url: String,
     has_tags: bool,
     tags: Vec<Tag>,
     // ramhorns はドットを含む名前をそのまま参照するため、partials.* を展開する。
@@ -317,6 +321,55 @@ fn parse_frontmatter(content: &str) -> Result<(FrontMatter, String)> {
     };
 
     Ok((frontmatter, parsed.content))
+}
+
+/// OGP 画像の URL を解決する。未指定時は空文字、base_url 未指定時はルート相対にする。
+fn resolve_og_image_url(image: &str, base_url: &str) -> Result<String> {
+    anyhow::ensure!(
+        !image.chars().any(char::is_control),
+        "og_image must not contain control characters"
+    );
+    let image = image.trim();
+    if image.is_empty() {
+        return Ok(String::new());
+    }
+    anyhow::ensure!(
+        !image.starts_with("//") && !image.contains('\\'),
+        "og_image must be an HTTP(S) URL or a site image path"
+    );
+    match url::Url::parse(image) {
+        Ok(url) => {
+            anyhow::ensure!(
+                matches!(url.scheme(), "http" | "https") && url.host_str().is_some(),
+                "og_image must use HTTP or HTTPS"
+            );
+            return Ok(url.to_string());
+        }
+        Err(url::ParseError::RelativeUrlWithoutBase) => {}
+        Err(error) => return Err(error).context("Invalid og_image URL"),
+    }
+
+    // base_url をディレクトリとして扱い、画像パスを標準の URL 規則で解決する。
+    // 未指定時だけ仮のオリジンを使い、返す値からは取り除く。
+    let base = if base_url.is_empty() {
+        "https://vss.invalid/".to_string()
+    } else {
+        format!("{}/", base_url.trim_end_matches('/'))
+    };
+    let base = url::Url::parse(&base).context("Invalid base_url for og_image")?;
+    anyhow::ensure!(
+        matches!(base.scheme(), "http" | "https")
+            && base.host_str().is_some()
+            && base.query().is_none()
+            && base.fragment().is_none(),
+        "base_url for og_image must be an HTTP(S) URL without a query or fragment"
+    );
+    let resolved = base.join(image).context("Failed to resolve og_image URL")?;
+    if base_url.is_empty() {
+        Ok(resolved[url::Position::BeforePath..].to_string())
+    } else {
+        Ok(resolved.to_string())
+    }
 }
 
 /// Markdown を HTML に変換する
@@ -579,6 +632,9 @@ fn process_markdown_file(
         author: frontmatter.author.clone(),
         pub_datetime: frontmatter.pub_datetime.clone(),
         post_slug: frontmatter.post_slug.clone(),
+        og_image: frontmatter.og_image.clone(),
+        og_image_url: resolve_og_image_url(&frontmatter.og_image, &config.base_url)
+            .with_context(|| format!("Invalid og_image in {}", md_path.display()))?,
         has_tags,
         tags,
         partials,

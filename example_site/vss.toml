@@ -1,5 +1,6 @@
 site_title = "Example Site"
 site_description = "An example site built with vss"
+# 相対パスで指定した og_image はこの URL を基準に解決する
 base_url = "https://example.com"
 
 [build]

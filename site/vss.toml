@@ -1,5 +1,6 @@
 site_title = "vss docs"
 site_description = "vss document site"
+# 相対パスで指定した og_image はこの URL を基準に解決する
 base_url = "https://vss.veltiosoft.dev"
 
 [build]

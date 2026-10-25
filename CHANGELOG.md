@@ -11,6 +11,10 @@
 
 ## main
 
+- [FIX] frontmatter の `og_image` をページテンプレートへ渡すようにする
+  - URL を解決した `og_image_url` を追加し、HTTP(S) の絶対 URL とサイト内の画像パスに対応する。
+  - 投稿テンプレートは画像未指定時に `og:image` を出力しない。
+
 ## v0.21.0
 
 - [CHANGE] Markdown の自動探索で `.` 始まりのディレクトリを除外する
