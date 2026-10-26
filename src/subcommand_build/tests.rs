@@ -9,6 +9,34 @@ use tempfile::TempDir;
 static CWD: Mutex<()> = Mutex::new(());
 
 #[test]
+fn template_lookups_use_portable_nested_paths() {
+    let templates = HashMap::from([
+        (
+            "nested/page.html".to_string(),
+            ramhorns::Template::new("page").unwrap(),
+        ),
+        (
+            "nested/default.html".to_string(),
+            ramhorns::Template::new("default").unwrap(),
+        ),
+    ]);
+    for (file, expected) in [
+        ("page.html", "nested/page.html"),
+        ("other.html", "nested/default.html"),
+    ] {
+        let native = Path::new("nested").join(file);
+        assert_eq!(
+            determine_template_key(&templates, &native.to_string_lossy()),
+            Some(expected)
+        );
+    }
+    assert_eq!(
+        template_path_key(&Path::new("nested").join("page.html")),
+        "nested/page.html"
+    );
+}
+
+#[test]
 fn rejects_frontmatter_resource_amplification_before_building_pages() {
     let too_large = format!("---\ntitle: {}\n---\nHome", "x".repeat(65_536));
     assert!(parse_frontmatter(&too_large).is_err());

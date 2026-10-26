@@ -574,7 +574,7 @@ fn load_templates(layouts_dir: &str) -> Result<HashMap<String, ramhorns::Templat
 
         // layouts/ からの相対パスをキーとする
         if let Ok(rel_path) = path.strip_prefix(&layouts_path) {
-            let key = rel_path.to_string_lossy().to_string();
+            let key = template_path_key(rel_path);
             templates.insert(key, template);
         }
     }
@@ -582,16 +582,24 @@ fn load_templates(layouts_dir: &str) -> Result<HashMap<String, ramhorns::Templat
     Ok(templates)
 }
 
+// 設定・キャッシュ・増分更新で、OS によらず / 区切りのキーを使う。
+fn template_path_key(path: &Path) -> String {
+    path.iter()
+        .map(|part| part.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Markdown が使用するテンプレートのキーを優先順位に従って検索する。
 fn determine_template_key<'a>(
     templates: &'a HashMap<String, ramhorns::Template<'static>>,
     html_path: &str,
 ) -> Option<&'a str> {
-    if let Some((key, _)) = templates.get_key_value(html_path) {
+    if let Some((key, _)) = templates.get_key_value(&template_path_key(Path::new(html_path))) {
         return Some(key);
     }
     if let Some(dir) = Path::new(html_path).parent() {
-        let key = format!("{}/default.html", dir.display());
+        let key = format!("{}/default.html", template_path_key(dir));
         if let Some((key, _)) = templates.get_key_value(&key) {
             return Some(key);
         }
@@ -1288,7 +1296,7 @@ impl IncrementalBuilder {
                     }
                     ChangedFile::Template(path) => {
                         let absolute = absolute_path(&root, path);
-                        let key = absolute.strip_prefix(&layouts_dir)?.to_string_lossy();
+                        let key = template_path_key(absolute.strip_prefix(&layouts_dir)?);
                         for page in &pages {
                             let html = page.with_extension("html");
                             if determine_template_key(&templates, &html.to_string_lossy())
