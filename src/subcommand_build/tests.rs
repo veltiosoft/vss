@@ -9,6 +9,26 @@ use tempfile::TempDir;
 static CWD: Mutex<()> = Mutex::new(());
 
 #[test]
+fn site_relative_paths_accept_canonical_prefixes_and_missing_files() {
+    let _site = Site::new();
+    let root = std::env::current_dir().unwrap();
+    let canonical = root.canonicalize().unwrap();
+    for base in [&root, &canonical] {
+        for (path, expected) in [
+            (root.join("index.md"), "index.md"),
+            (canonical.join("index.md"), "index.md"),
+            (canonical.join("deleted.md"), "deleted.md"),
+        ] {
+            assert_eq!(
+                site_relative_path(base, &path).unwrap(),
+                Path::new(expected)
+            );
+        }
+        assert!(site_relative_path(base, &root.parent().unwrap().join("outside.md")).is_err());
+    }
+}
+
+#[test]
 fn template_lookups_use_portable_nested_paths() {
     let templates = HashMap::from([
         (

@@ -988,10 +988,33 @@ pub(crate) fn absolute_path(root: &Path, path: &Path) -> PathBuf {
 
 fn site_relative_path(root: &Path, path: &Path) -> Result<PathBuf> {
     let absolute = absolute_path(root, path);
-    let relative = absolute
-        .strip_prefix(root)
-        .with_context(|| format!("Changed path is outside the site: {}", path.display()))?;
-    Ok(relative.to_path_buf())
+    let mut components = absolute.components();
+    for expected in root.components() {
+        let actual = components.next();
+        if actual == Some(expected) {
+            continue;
+        }
+        // canonicalize / notify が返す拡張長プレフィックスも同じサイトとして扱う。
+        // ファイル名や祖先は解決せず、削除済み入力でもサイト外を受理しない。
+        #[cfg(windows)]
+        if let (Component::Prefix(expected), Some(Component::Prefix(actual))) = (expected, actual) {
+            use std::path::Prefix::{Disk, UNC, VerbatimDisk, VerbatimUNC};
+            let equivalent = match (expected.kind(), actual.kind()) {
+                (Disk(left) | VerbatimDisk(left), Disk(right) | VerbatimDisk(right)) => {
+                    left.eq_ignore_ascii_case(&right)
+                }
+                (UNC(ls, lp) | VerbatimUNC(ls, lp), UNC(rs, rp) | VerbatimUNC(rs, rp)) => {
+                    ls == rs && lp == rp
+                }
+                _ => false,
+            };
+            if equivalent {
+                continue;
+            }
+        }
+        anyhow::bail!("Changed path is outside the site: {}", path.display());
+    }
+    Ok(components.as_path().to_path_buf())
 }
 
 fn find_markdown_sources(config: &Config) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
