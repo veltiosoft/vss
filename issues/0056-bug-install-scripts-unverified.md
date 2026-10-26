@@ -35,6 +35,16 @@
 - [ ] `install.ps1` が `veltiosoft/vss` の現行リリースから取得し、`vss.exe` を配置できる。
 - [ ] `curl` が HTTPS のみを許可し、HTTP へのリダイレクトを拒否する。
 
+## 対応状況
+
+- 修正前のシェルスクリプトをモックのダウンロードで実行し、チェックサム不一致でも既存バイナリを上書きし、余分なアーカイブ内ファイルも展開することを再現した。PowerShell 版の旧配布元・旧配置もソースで確認した。
+- 両インストーラーで HTTPS のみを許可し、アーカイブごとの `.sha256` を取得・照合してから、フラットな `vss` / `vss.exe` だけをストリームで取り出すようにした。
+- シェル版の Windows 分岐を ZIP と `.exe` に修正し、未対応プラットフォームは拒否する。PowerShell 版は現行の `veltiosoft/vss` へ変更した。
+- `cargo test --test install_scripts` のローカル 3 テスト、`sh -n`、Clippy が成功した。モックの uname / curl で Linux・macOS・Windows シェルの各分岐を実行し、正常ハッシュ、異常ハッシュ、不要ファイルの非展開を確認した。
+- PowerShell の実行テストを追加し、Windows CI から実行するようにした。ローカルには pwsh がないため、PowerShell / Windows 実機と GitHub 上の実リリースからのダウンロードは未検証。
+- チェックサムのない旧リリースでは安全側に失敗する。チェックサムは署名の代替ではなく、署名対応は関連 issue で保留中。
+- 未クローズ。`Completed:` は更新していない。
+
 ## 関連
 
 - [0053](0053-bug-self-update-no-signature.md): 自己更新の署名検証。
