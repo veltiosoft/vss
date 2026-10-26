@@ -11,35 +11,40 @@ New-Item $Source -ItemType Directory | Out-Null
 Set-Content (Join-Path $Source 'vss.exe') 'verified binary' -NoNewline
 Set-Content (Join-Path $Source 'unexpected.txt') 'not installed'
 [IO.Compression.ZipFile]::CreateFromDirectory($Source, $Archive)
-$script:Digest = (Get-FileHash -Algorithm SHA256 $Archive).Hash
-$script:Corrupt = $false
-$script:CurlCalls = @()
+# The mock runs in the invoked installer's script scope. Keep fixture state
+# explicit rather than resolving $script: variables in that caller's scope.
+$global:VssInstallerTestState = @{
+    Digest = (Get-FileHash -Algorithm SHA256 $Archive).Hash
+    Corrupt = $false
+    CurlCalls = @()
+    Archive = $Archive
+}
 function global:curl.exe {
-    $script:CurlCalls += ,@($args)
+    $global:VssInstallerTestState.CurlCalls += ,@($args)
     $OutputPath = $args[[array]::IndexOf($args, '--output') + 1]
     $Url = $args[-1]
     if ($Url.EndsWith('.sha256')) {
-        $Hash = if ($script:Corrupt) { '0' * 64 } else { $script:Digest }
+        $Hash = if ($global:VssInstallerTestState.Corrupt) { '0' * 64 } else { $global:VssInstallerTestState.Digest }
         Set-Content $OutputPath "$Hash  vss_windows_amd64.zip"
-    } else { Copy-Item $Archive $OutputPath }
+    } else { Copy-Item $global:VssInstallerTestState.Archive $OutputPath }
     $global:LASTEXITCODE = 0
 }
 try {
     New-Item (Join-Path $env:VSS_INSTALL 'bin') -ItemType Directory | Out-Null
     $Destination = Join-Path $env:VSS_INSTALL 'bin/vss.exe'
     Set-Content $Destination 'old binary' -NoNewline
-    $script:Corrupt = $true
+    $global:VssInstallerTestState.Corrupt = $true
     $Rejected = $false
     try { & $Installer } catch {
         if ($_.Exception.Message -notlike '*checksum mismatch*') { throw }
         $Rejected = $true
     }
     if (!$Rejected -or (Get-Content -Raw $Destination) -ne 'old binary') { throw 'Corrupt archive was installed' }
-    $script:Corrupt = $false
+    $global:VssInstallerTestState.Corrupt = $false
     & $Installer
     if ((Get-Content -Raw $Destination) -ne 'verified binary') { throw 'Verified binary not installed' }
     if (Test-Path (Join-Path $env:VSS_INSTALL 'bin/unexpected.txt')) { throw 'Unexpected file was extracted' }
-    foreach ($Call in $script:CurlCalls) {
+    foreach ($Call in $global:VssInstallerTestState.CurlCalls) {
         if ($Call[-1] -notlike 'https://github.com/veltiosoft/vss/releases/*') { throw 'Wrong release repository' }
         foreach ($Flag in @('--proto', '--proto-redir', '--tlsv1.2', '--fail')) {
             if ($Call -notcontains $Flag) { throw "Missing security flag: $Flag" }
@@ -47,4 +52,5 @@ try {
     }
 } finally {
     Remove-Item $Root -Recurse -Force
+    Remove-Variable VssInstallerTestState -Scope Global
 }
