@@ -21,6 +21,9 @@
 - [UPDATE] 自己更新とサーバーの依存を既知の脆弱性の修正版へ更新し、CI に `cargo audit` を追加する
   - `self_update` を更新し、`ureq` と `rustls`、`webpki-roots` による TLS 検証を使用する。
   - frontmatter の YAML パーサを `serde-saphyr` に移行し、未メンテナンスの `serde_yaml` / `unsafe-libyaml` への依存を除く。
+- [FIX] リリース時のタグ名を環境変数経由で渡し、シェルへのコマンド注入を防ぐ
+  - リリースタグの書式を検証し、ジョブの権限を限定し、使用アクションを commit SHA に固定する。
+  - 配布アーカイブの SHA-256 チェックサムと GitHub Artifact Attestations を生成する。
 - [FIX] Rust 版の `new` コマンドでビルド可能なサイトの雛形を生成する
   - 存在しないディレクトリと空の既存ディレクトリに対応し、`vss new .` でも生成できるようにする。
   - 空でないディレクトリへの生成は拒否し、既存ファイルを上書きしない。
