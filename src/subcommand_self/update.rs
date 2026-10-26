@@ -14,7 +14,7 @@ pub fn run(_args: noargs::RawArgs) -> noargs::Result<()> {
 
     match update() {
         Ok(status) => {
-            if status.updated() {
+            if status.is_updated() {
                 println!("✓ vss を {} に更新しました", status.version());
                 println!("\n変更を適用するには、コマンドを再実行してください。");
             } else {
@@ -50,7 +50,7 @@ fn get_target() -> &'static str {
     }
 }
 
-fn update() -> Result<self_update::Status> {
+fn update() -> Result<self_update::VersionStatus> {
     let current_version = env!("CARGO_PKG_VERSION");
     let target = get_target();
 

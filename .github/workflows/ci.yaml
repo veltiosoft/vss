@@ -36,6 +36,18 @@ jobs:
       - run: rustup update stable
       - run: cargo test --locked --test new_command
 
+  audit:
+    name: Dependency security audit
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+      - run: rustup update stable
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Reject vulnerable dependencies
+        run: cargo audit
+
   lints:
     name: Lints
     runs-on: ubuntu-24.04

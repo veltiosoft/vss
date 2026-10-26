@@ -444,7 +444,7 @@ fn parse_frontmatter(content: &str) -> Result<(FrontMatter, String)> {
     let frontmatter = if parsed.matter.is_empty() {
         FrontMatter::default()
     } else {
-        serde_yaml::from_str(&parsed.matter).context("Invalid YAML front matter")?
+        serde_saphyr::from_str(&parsed.matter).context("Invalid YAML front matter")?
     };
 
     Ok((frontmatter, parsed.content))
