@@ -34,7 +34,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v5
       - run: rustup update stable
-      - run: cargo test --locked --test new_command
+      - run: cargo test --locked --test new_command --test config_paths --test install_scripts
 
   audit:
     name: Dependency security audit
