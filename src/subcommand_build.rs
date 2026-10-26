@@ -1191,20 +1191,25 @@ impl IncrementalBuilder {
         let static_dir = absolute_path(&root, Path::new(&config.r#static));
         let layouts_dir = absolute_path(&root, Path::new(&config.layouts));
         let dist_dir = absolute_path(&root, Path::new(&config.dist));
+        // 通知のプレフィックス・祖先の別名を検証してから、共通の相対形式に揃える。
+        let mut public_changes = changed_files.to_vec();
+        for changed in &mut public_changes {
+            match changed {
+                ChangedFile::Markdown(path)
+                | ChangedFile::Static(path)
+                | ChangedFile::Template(path)
+                | ChangedFile::Deleted(path) => *path = site_relative_path(&root, path)?,
+                ChangedFile::Config => {}
+            }
+        }
         // 全体コピーと増分コピーで同じ公開範囲を使う。削除通知も同様に扱う。
-        let public_changes: Vec<_> = changed_files
-            .iter()
-            .filter(|changed| match changed {
-                ChangedFile::Static(path) | ChangedFile::Deleted(path) => {
-                    absolute_path(&root, path)
-                        .strip_prefix(&static_dir)
-                        .map(is_public_static_path)
-                        .unwrap_or(true)
-                }
-                _ => true,
-            })
-            .cloned()
-            .collect();
+        public_changes.retain(|changed| match changed {
+            ChangedFile::Static(path) | ChangedFile::Deleted(path) => absolute_path(&root, path)
+                .strip_prefix(&static_dir)
+                .map(is_public_static_path)
+                .unwrap_or(true),
+            _ => true,
+        });
         let changed_files = public_changes.as_slice();
         let force_full_build = self.needs_full_build
             || self.has_missing_inputs()
