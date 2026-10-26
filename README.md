@@ -32,6 +32,10 @@ pages. The site root itself and dot-prefixed Markdown filenames are still allowe
 Static files and templates retain their existing behavior, including copying
 `static/.well-known/` and loading explicitly configured dot-prefixed directories.
 
+`dist` must be a relative directory inside the site. The site root, parent
+traversal, absolute paths, symbolic links, and overlap with input directories,
+Git directories, or the configuration file are rejected before outputs are removed.
+
 Symbolic links are excluded from builds, including links to Markdown, partials,
 templates, static files, and directories containing them. Use regular files and
 directories for content you want to publish. In `vss serve`, replacing an input

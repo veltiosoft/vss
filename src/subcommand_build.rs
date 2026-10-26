@@ -283,7 +283,96 @@ pub(crate) fn load_config(path: &Path) -> Result<Config> {
             && !relative.split('/').any(|part| matches!(part, "." | "..")),
         "Tag URL pattern must be a path inside the site"
     );
+    validate_dist(&config, path)?;
     Ok(config)
+}
+
+/// 設定パスは OS にかかわらずサイト内の相対パスだけを受け付ける。
+fn site_directory(root: &Path, value: &str, setting: &str) -> Result<PathBuf> {
+    anyhow::ensure!(
+        !value.is_empty()
+            && !Path::new(value).is_absolute()
+            && !value.contains([':', '\\'])
+            && !value.chars().any(char::is_control)
+            && !value.split('/').any(|part| part == ".."),
+        "{setting} must be a relative directory inside the site"
+    );
+    let directory = absolute_path(root, Path::new(value));
+    anyhow::ensure!(
+        directory != root && directory.starts_with(root),
+        "{setting} must not be the site root or outside the site"
+    );
+    Ok(directory)
+}
+
+fn ensure_no_symlink_ancestors(path: &Path, setting: &str) -> Result<()> {
+    for ancestor in path.ancestors() {
+        match fs::symlink_metadata(ancestor) {
+            Ok(metadata) => anyhow::ensure!(
+                !metadata.file_type().is_symlink(),
+                "{setting} must not contain symbolic links: {}",
+                ancestor.display()
+            ),
+            // 未作成の出力でも、既存の祖先はすべて検査する。
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("Failed to inspect {setting}: {}", ancestor.display())
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+// 未作成のパスは字句比較し、既存のパスは Unicode の別名や短縮名も実体で照合する。
+fn paths_overlap(left: &Path, right: &Path) -> Result<bool> {
+    if left.components().zip(right.components()).all(|(a, b)| {
+        a.as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&b.as_os_str().to_string_lossy())
+    }) {
+        return Ok(true);
+    }
+    for (path, target) in [(left, right), (right, left)] {
+        for ancestor in path.ancestors() {
+            match same_file::is_same_file(ancestor, target) {
+                Ok(true) => return Ok(true),
+                Ok(false) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(error).context("Failed to compare input and output paths");
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn validate_dist(config: &Config, config_path: &Path) -> Result<()> {
+    let root = std::env::current_dir().context("Failed to get current directory")?;
+    let dist = site_directory(&root, &config.dist, "dist")?;
+    for input in [&config.r#static, &config.layouts, PARTIALS_DIR, ".git"] {
+        let input = absolute_path(&root, Path::new(input));
+        anyhow::ensure!(
+            !paths_overlap(&dist, &input)?,
+            "dist must not overlap input or Git directories: {}",
+            input.display()
+        );
+    }
+    anyhow::ensure!(
+        !paths_overlap(&dist, &absolute_path(&root, config_path))?,
+        "dist must not contain the configuration file"
+    );
+    // Git のメタデータは入れ子でも削除しない。Windows の大小文字も考慮する。
+    anyhow::ensure!(
+        !dist
+            .strip_prefix(&root)?
+            .iter()
+            .any(|part| part.to_string_lossy().eq_ignore_ascii_case(".git")),
+        "dist must not contain Git directories"
+    );
+    ensure_no_symlink_ancestors(&dist, "dist")
 }
 
 /// Frontmatter とコンテンツを解析する

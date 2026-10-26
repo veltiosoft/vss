@@ -2155,6 +2155,7 @@ dependencies = [
  "notify-debouncer-full",
  "percent-encoding",
  "ramhorns",
+ "same-file",
  "self_update",
  "semver",
  "serde",
