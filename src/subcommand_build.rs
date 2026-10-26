@@ -989,7 +989,9 @@ pub(crate) fn absolute_path(root: &Path, path: &Path) -> PathBuf {
 fn site_relative_path(root: &Path, path: &Path) -> Result<PathBuf> {
     let absolute = absolute_path(root, path);
     let mut components = absolute.components();
-    for expected in root.components() {
+    for (index, expected) in root.components().enumerate() {
+        #[cfg(not(windows))]
+        let _ = index;
         let actual = components.next();
         if actual == Some(expected) {
             continue;
@@ -1010,6 +1012,23 @@ fn site_relative_path(root: &Path, path: &Path) -> Result<PathBuf> {
             };
             if equivalent {
                 continue;
+            }
+        }
+        // TEMP などの 8.3 形式と canonicalize の長い名前を、既存の祖先だけで照合する。
+        #[cfg(windows)]
+        if matches!(
+            (expected, actual),
+            (Component::Normal(_), Some(Component::Normal(_)))
+        ) {
+            let expected: PathBuf = root.components().take(index + 1).collect();
+            let actual: PathBuf = absolute.components().take(index + 1).collect();
+            match same_file::is_same_file(expected, actual) {
+                Ok(true) => continue,
+                Ok(false) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(error).context("Failed to compare changed path ancestors");
+                }
             }
         }
         anyhow::bail!("Changed path is outside the site: {}", path.display());

@@ -13,6 +13,7 @@ fn site_relative_paths_accept_canonical_prefixes_and_missing_files() {
     let _site = Site::new();
     let root = std::env::current_dir().unwrap();
     let canonical = root.canonicalize().unwrap();
+    let outside = tempfile::tempdir().unwrap();
     for base in [&root, &canonical] {
         for (path, expected) in [
             (root.join("index.md"), "index.md"),
@@ -25,6 +26,13 @@ fn site_relative_paths_accept_canonical_prefixes_and_missing_files() {
             );
         }
         assert!(site_relative_path(base, &root.parent().unwrap().join("outside.md")).is_err());
+        assert!(
+            site_relative_path(
+                base,
+                &outside.path().canonicalize().unwrap().join("index.md")
+            )
+            .is_err()
+        );
     }
 }
 
