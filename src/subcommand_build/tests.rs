@@ -34,6 +34,17 @@ fn template_lookups_use_portable_nested_paths() {
         template_path_key(&Path::new("nested").join("page.html")),
         "nested/page.html"
     );
+
+    let _site = Site::new();
+    let loaded = load_templates("layouts").unwrap();
+    assert!(loaded.contains_key("tags/default.html"));
+    assert_eq!(
+        determine_template_key(
+            &loaded,
+            &Path::new("tags").join("default.html").to_string_lossy()
+        ),
+        Some("tags/default.html")
+    );
 }
 
 #[test]
