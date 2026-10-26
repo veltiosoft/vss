@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.103"
 axum = "0.7"
+cap-std = "4.0.3"
+cap-fs-ext = "4.0.3"
 gray_matter = { version = "0.2", default-features = false }
 markdown = "1.0.0"
 noargs = "0.4.1"
