@@ -385,6 +385,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn encoded_tag_urls_reach_the_unchanged_portable_output_paths() {
+        let (root, app) = test_app();
+        for (tag, url) in [
+            ("news", "/tags/news/"),
+            ("C++", "/tags/C%2B%2B/"),
+            ("a b", "/tags/a%20b/"),
+            ("日本語", "/tags/%E6%97%A5%E6%9C%AC%E8%AA%9E/"),
+        ] {
+            let directory = root.path().join("tags").join(tag);
+            fs::create_dir_all(&directory).unwrap();
+            fs::write(directory.join("index.html"), tag).unwrap();
+            let response = get(app.clone(), url, &["localhost:8080"]).await;
+            assert_eq!(response.status(), StatusCode::OK, "{url}");
+            assert_eq!(
+                axum::body::to_bytes(response.into_body(), 1024)
+                    .await
+                    .unwrap(),
+                tag
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn denies_hidden_and_traversal_paths_but_serves_public_well_known_files() {
         let (_root, app) = test_app();
         for path in [

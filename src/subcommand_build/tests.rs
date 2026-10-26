@@ -133,6 +133,77 @@ fn rejects_tag_names_that_can_be_url_schemes_or_windows_prefixes() {
 }
 
 #[test]
+fn excludes_nonportable_tag_filenames_without_breaking_the_build() {
+    let _site = Site::new();
+    let invalid = [
+        "a?b",
+        "a*b",
+        "a<b",
+        "a>b",
+        "a|b",
+        "a\"b",
+        "trailing.",
+        "trailing ",
+        "CON",
+        "con.txt",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM1",
+        "LPT9",
+        "COM¹",
+        "LPT²",
+        "CONIN$",
+        "CONOUT$",
+    ];
+    for tag in invalid {
+        assert!(!is_safe_tag_name(tag), "accepted {tag:?}");
+    }
+    let tags = invalid
+        .iter()
+        .map(|tag| format!("'{tag}'"))
+        .chain([
+            "'news'".into(),
+            "'日本語'".into(),
+            "'C++'".into(),
+            "'a b'".into(),
+        ])
+        .collect::<Vec<String>>()
+        .join(",");
+    write("index.md", &format!("---\ntags: [{tags}]\n---\nHome"));
+    write(
+        "layouts/default.html",
+        "{{#tags}}<a href=\"{{url}}\">{{name}}</a>{{/tags}}",
+    );
+    run_build(Path::new("vss.toml")).unwrap();
+    let page = read("dist/index.html");
+    for (name, url) in [
+        ("news", "/tags/news/"),
+        ("日本語", "/tags/%E6%97%A5%E6%9C%AC%E8%AA%9E/"),
+        ("C++", "/tags/C%2B%2B/"),
+        ("a b", "/tags/a%20b/"),
+    ] {
+        assert!(page.contains(&format!("<a href=\"{url}\">{name}</a>")));
+        assert!(Path::new(&format!("dist/tags/{name}/index.html")).is_file());
+    }
+    assert_eq!(fs::read_dir("dist/tags").unwrap().count(), 4);
+}
+
+#[test]
+fn incremental_build_removes_tag_pages_when_tags_become_nonportable() {
+    let site = Site::new();
+    let mut builder = site.builder();
+    write("index.md", "---\ntags: ['a?b', CON, 'C++']\n---\nChanged");
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+        .unwrap();
+    assert!(!Path::new("dist/tags/news").exists());
+    assert_eq!(fs::read_dir("dist/tags").unwrap().count(), 1);
+    assert!(Path::new("dist/tags/C++/index.html").is_file());
+    matches_full_build("dist");
+}
+
+#[test]
 fn relative_tag_patterns_cannot_publish_javascript_links() {
     let _site = Site::new();
     write("vss.toml", "[build.tags]\nurl_pattern = '{tag}.html'");
@@ -157,7 +228,7 @@ fn tag_urls_encode_path_characters_and_keep_output_paths_consistent() {
     for (tag, encoded) in [
         ("C++", "C%2B%2B"),
         ("a b", "a%20b"),
-        ("a#b?c%20", "a%23b%3Fc%2520"),
+        ("a#bc%20", "a%23bc%2520"),
         ("日本語", "%E6%97%A5%E6%9C%AC%E8%AA%9E"),
     ] {
         assert_eq!(tag_url(&config, tag), format!("/tags/{encoded}/"));

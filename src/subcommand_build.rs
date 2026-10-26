@@ -138,10 +138,36 @@ fn is_safe_tag_name(tag: &str) -> bool {
     }
 
     // URL スキーム、Windows のドライブ接頭辞、制御文字を受け付けない。
-    if tag.contains(':') || tag.chars().any(char::is_control) {
+    if tag.contains([':', '?', '*', '<', '>', '|', '"'])
+        || tag.chars().any(char::is_control)
+        || tag.ends_with(['.', ' '])
+    {
         return false;
     }
 
+    // Windows は拡張子付き・大小文字違いのデバイス名も予約している。
+    let stem = tag
+        .split('.')
+        .next()
+        .unwrap()
+        .trim_end_matches(' ')
+        .to_ascii_uppercase();
+    if matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) {
+        return false;
+    }
+    if let Some(number) = stem
+        .strip_prefix("COM")
+        .or_else(|| stem.strip_prefix("LPT"))
+        && matches!(
+            number,
+            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+        )
+    {
+        return false;
+    }
     true
 }
 

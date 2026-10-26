@@ -49,6 +49,21 @@ YAML front matter is limited to 64 KiB per file. Each file can have at most
 Markdown partials. Invalid front matter or exceeded limits cause a build error;
 the Markdown body is not subject to the front matter size limit.
 
+## Portable tag names
+
+Tags with filenames that are unsafe on Windows are excluded from rendered tag
+links and tag-page generation on every OS; they do not fail the build. No filename
+substitution is performed, so sanitization cannot introduce name collisions.
+Excluded names contain `?`, `*`, `<`, `>`, `|`, or `"`, end with a dot or space, or
+use a reserved device name such as `CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, or
+`LPT1`–`LPT9` (case-insensitive, including extensions). `CONIN$`, `CONOUT$`, and
+the Windows-reserved superscript-digit variants are also excluded. Existing
+restrictions on traversal, path separators, colons, and control characters remain.
+
+Safe tags keep their existing URL encoding and output paths: `C++` uses
+`/tags/C%2B%2B/` and `dist/tags/C++/index.html`; `a b` uses `/tags/a%20b/` and
+`dist/tags/a b/index.html`. Japanese tag names are unchanged.
+
 ## Development server
 
 The development server accepts only `localhost` and `127.0.0.1` Host headers
