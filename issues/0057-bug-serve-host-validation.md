@@ -34,6 +34,14 @@
 - [ ] dotfile 配信の既定動作を決め、テストで確認する。
 - [ ] パストラバーサル防御の回帰テストが引き続き成功する。
 
+## 対応状況
+
+- 現行の Router を使うテストで、外部 Host と `/.env` が 200 を返し、セキュリティヘッダもないことを確認した。
+- `localhost` / `127.0.0.1` と有効な任意のポート番号だけを許可し、Host の欠落・重複・不正なポート・絶対 URI の authority との不一致は 400 にした。
+- すべての応答に `nosniff`、`Referrer-Policy: no-referrer`、`X-Frame-Options: DENY` を付け、隠しパスは 404 にした。ルート直下の `.well-known` は維持し、その配下の隠しパスは拒否する。
+- `cargo test --lib subcommand_serve::tests` の全 4 テストと Clippy が成功した。許可 Host、HTML 補完、エンコードした隠しパス・トラバーサル・NUL の拒否を確認した。バインド先は変更していない。
+- 未クローズ。`Completed:` は更新していない。
+
 ## 関連
 
 - [0052](0052-bug-static-layouts-outside-site.md): `static` / `layouts` のサイト外参照。
