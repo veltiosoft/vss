@@ -5,6 +5,9 @@ on:
     tags:
       - "*"
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -12,22 +15,32 @@ jobs:
   github-release:
     name: "Create draft GitHub Release"
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.get_version.outputs.VERSION }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Get the version
         id: get_version
-        run: echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
+        shell: bash
+        run: |
+          VERSION="$GITHUB_REF_NAME"
+          if [[ ! "$VERSION" =~ ^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            printf 'Invalid release tag: %s\n' "$VERSION" >&2
+            exit 1
+          fi
+          printf 'VERSION=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create draft release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
-          gh release create ${{ steps.get_version.outputs.VERSION }} \
-            --title "${{ steps.get_version.outputs.VERSION }}" \
+          gh release create "$VERSION" \
+            --title "$VERSION" \
             --draft \
             --generate-notes
 
@@ -36,6 +49,12 @@ jobs:
     needs: github-release
     runs-on: ${{ matrix.platform.os }}
     timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      ARCHIVE: vss_${{ matrix.platform.os_name }}_${{ matrix.platform.arch_name }}.${{ matrix.platform.archive_ext }}
     strategy:
       fail-fast: false
       matrix:
@@ -70,10 +89,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: ${{ matrix.platform.target }}
 
@@ -122,16 +141,32 @@ jobs:
           7z a ../vss_${{ matrix.platform.os_name }}_${{ matrix.platform.arch_name }}.zip vss.exe
           cd ..
 
+      - name: Generate checksum
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+          else
+            shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+          fi
+
+      - name: Attest release archive
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: ${{ env.ARCHIVE }}
+
       - name: Upload Release Asset
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.github-release.outputs.version }}
         shell: bash
         run: |
-          gh release upload ${{ needs.github-release.outputs.version }} \
-            vss_${{ matrix.platform.os_name }}_${{ matrix.platform.arch_name }}.${{ matrix.platform.archive_ext }}
+          gh release upload "$VERSION" "$ARCHIVE" "$ARCHIVE.sha256"
 
   publish:
     name: "Publish GitHub Release"
+    permissions:
+      contents: write
     needs: [github-release, build]
     runs-on: ubuntu-24.04
     steps:

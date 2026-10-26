@@ -138,10 +138,36 @@ fn is_safe_tag_name(tag: &str) -> bool {
     }
 
     // URL スキーム、Windows のドライブ接頭辞、制御文字を受け付けない。
-    if tag.contains(':') || tag.chars().any(char::is_control) {
+    if tag.contains([':', '?', '*', '<', '>', '|', '"'])
+        || tag.chars().any(char::is_control)
+        || tag.ends_with(['.', ' '])
+    {
         return false;
     }
 
+    // Windows は拡張子付き・大小文字違いのデバイス名も予約している。
+    let stem = tag
+        .split('.')
+        .next()
+        .unwrap()
+        .trim_end_matches(' ')
+        .to_ascii_uppercase();
+    if matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) {
+        return false;
+    }
+    if let Some(number) = stem
+        .strip_prefix("COM")
+        .or_else(|| stem.strip_prefix("LPT"))
+        && matches!(
+            number,
+            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+        )
+    {
+        return false;
+    }
     true
 }
 
@@ -283,7 +309,134 @@ pub(crate) fn load_config(path: &Path) -> Result<Config> {
             && !relative.split('/').any(|part| matches!(part, "." | "..")),
         "Tag URL pattern must be a path inside the site"
     );
+    let root = std::env::current_dir().context("Failed to get current directory")?;
+    for (setting, value) in [("static", &config.r#static), ("layouts", &config.layouts)] {
+        let directory = site_directory(&root, value, setting)?;
+        anyhow::ensure!(
+            !has_private_source_component(&root, &directory)?,
+            "{setting} must not refer to private directories"
+        );
+    }
+    validate_dist(&config, path)?;
     Ok(config)
+}
+
+/// 設定パスは OS にかかわらずサイト内の相対パスだけを受け付ける。
+fn site_directory(root: &Path, value: &str, setting: &str) -> Result<PathBuf> {
+    anyhow::ensure!(
+        !value.is_empty()
+            && !Path::new(value).is_absolute()
+            && !value.contains([':', '\\'])
+            && !value.chars().any(char::is_control)
+            && !value.split('/').any(|part| part == ".."),
+        "{setting} must be a relative directory inside the site"
+    );
+    let directory = absolute_path(root, Path::new(value));
+    anyhow::ensure!(
+        directory != root && directory.starts_with(root),
+        "{setting} must not be the site root or outside the site"
+    );
+    Ok(directory)
+}
+
+fn has_private_source_component(root: &Path, directory: &Path) -> Result<bool> {
+    for ancestor in directory.ancestors().take_while(|path| *path != root) {
+        let name = ancestor
+            .file_name()
+            .context("Invalid source directory")?
+            .to_string_lossy();
+        // Win32 は末尾のドット・空白を取り除いて解決する。
+        let name = name.trim_end_matches(['.', ' ']);
+        for private in [".git", ".ssh", ".env"] {
+            if name.eq_ignore_ascii_case(private) {
+                return Ok(true);
+            }
+            // Windows の短縮名など、文字列だけでは判別できない別名も拒否する。
+            let protected = ancestor
+                .parent()
+                .context("Invalid source parent")?
+                .join(private);
+            match same_file::is_same_file(ancestor, protected) {
+                Ok(true) => return Ok(true),
+                Ok(false) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(error).context("Failed to inspect private source aliases");
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn ensure_no_symlink_ancestors(path: &Path, setting: &str) -> Result<()> {
+    for ancestor in path.ancestors() {
+        match fs::symlink_metadata(ancestor) {
+            Ok(metadata) => anyhow::ensure!(
+                !metadata.file_type().is_symlink(),
+                "{setting} must not contain symbolic links: {}",
+                ancestor.display()
+            ),
+            // 未作成の出力でも、既存の祖先はすべて検査する。
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("Failed to inspect {setting}: {}", ancestor.display())
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+// 未作成のパスは字句比較し、既存のパスは Unicode の別名や短縮名も実体で照合する。
+fn paths_overlap(left: &Path, right: &Path) -> Result<bool> {
+    if left.components().zip(right.components()).all(|(a, b)| {
+        a.as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&b.as_os_str().to_string_lossy())
+    }) {
+        return Ok(true);
+    }
+    for (path, target) in [(left, right), (right, left)] {
+        for ancestor in path.ancestors() {
+            match same_file::is_same_file(ancestor, target) {
+                Ok(true) => return Ok(true),
+                Ok(false) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(error).context("Failed to compare input and output paths");
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn validate_dist(config: &Config, config_path: &Path) -> Result<()> {
+    let root = std::env::current_dir().context("Failed to get current directory")?;
+    let dist = site_directory(&root, &config.dist, "dist")?;
+    for input in [&config.r#static, &config.layouts, PARTIALS_DIR, ".git"] {
+        let input = absolute_path(&root, Path::new(input));
+        anyhow::ensure!(
+            !paths_overlap(&dist, &input)?,
+            "dist must not overlap input or Git directories: {}",
+            input.display()
+        );
+    }
+    anyhow::ensure!(
+        !paths_overlap(&dist, &absolute_path(&root, config_path))?,
+        "dist must not contain the configuration file"
+    );
+    // Git のメタデータは入れ子でも削除しない。Windows の大小文字も考慮する。
+    anyhow::ensure!(
+        !dist
+            .strip_prefix(&root)?
+            .iter()
+            .any(|part| part.to_string_lossy().eq_ignore_ascii_case(".git")),
+        "dist must not contain Git directories"
+    );
+    ensure_no_symlink_ancestors(&dist, "dist")
 }
 
 /// Frontmatter とコンテンツを解析する
@@ -317,7 +470,7 @@ fn parse_frontmatter(content: &str) -> Result<(FrontMatter, String)> {
     let frontmatter = if parsed.matter.is_empty() {
         FrontMatter::default()
     } else {
-        serde_yaml::from_str(&parsed.matter).context("Invalid YAML front matter")?
+        serde_saphyr::from_str(&parsed.matter).context("Invalid YAML front matter")?
     };
 
     Ok((frontmatter, parsed.content))
@@ -421,7 +574,7 @@ fn load_templates(layouts_dir: &str) -> Result<HashMap<String, ramhorns::Templat
 
         // layouts/ からの相対パスをキーとする
         if let Ok(rel_path) = path.strip_prefix(&layouts_path) {
-            let key = rel_path.to_string_lossy().to_string();
+            let key = template_path_key(rel_path);
             templates.insert(key, template);
         }
     }
@@ -429,16 +582,24 @@ fn load_templates(layouts_dir: &str) -> Result<HashMap<String, ramhorns::Templat
     Ok(templates)
 }
 
+// 設定・キャッシュ・増分更新で、OS によらず / 区切りのキーを使う。
+fn template_path_key(path: &Path) -> String {
+    path.iter()
+        .map(|part| part.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Markdown が使用するテンプレートのキーを優先順位に従って検索する。
 fn determine_template_key<'a>(
     templates: &'a HashMap<String, ramhorns::Template<'static>>,
     html_path: &str,
 ) -> Option<&'a str> {
-    if let Some((key, _)) = templates.get_key_value(html_path) {
+    if let Some((key, _)) = templates.get_key_value(&template_path_key(Path::new(html_path))) {
         return Some(key);
     }
     if let Some(dir) = Path::new(html_path).parent() {
-        let key = format!("{}/default.html", dir.display());
+        let key = format!("{}/default.html", template_path_key(dir));
         if let Some((key, _)) = templates.get_key_value(&key) {
             return Some(key);
         }
@@ -476,7 +637,7 @@ fn copy_static_files(static_dir: &str, dist_dir: &str) -> Result<()> {
         return Ok(());
     }
 
-    for src_path in source_files(&static_path, None, &[], false)? {
+    for src_path in static_source_files(&static_path)? {
         // static/ からの相対パスを取得
         if let Ok(rel_path) = src_path.strip_prefix(&static_path) {
             let dest_path = Path::new(dist_dir).join(rel_path);
@@ -827,10 +988,52 @@ pub(crate) fn absolute_path(root: &Path, path: &Path) -> PathBuf {
 
 fn site_relative_path(root: &Path, path: &Path) -> Result<PathBuf> {
     let absolute = absolute_path(root, path);
-    let relative = absolute
-        .strip_prefix(root)
-        .with_context(|| format!("Changed path is outside the site: {}", path.display()))?;
-    Ok(relative.to_path_buf())
+    let mut components = absolute.components();
+    for (index, expected) in root.components().enumerate() {
+        #[cfg(not(windows))]
+        let _ = index;
+        let actual = components.next();
+        if actual == Some(expected) {
+            continue;
+        }
+        // canonicalize / notify が返す拡張長プレフィックスも同じサイトとして扱う。
+        // ファイル名や祖先は解決せず、削除済み入力でもサイト外を受理しない。
+        #[cfg(windows)]
+        if let (Component::Prefix(expected), Some(Component::Prefix(actual))) = (expected, actual) {
+            use std::path::Prefix::{Disk, UNC, VerbatimDisk, VerbatimUNC};
+            let equivalent = match (expected.kind(), actual.kind()) {
+                (Disk(left) | VerbatimDisk(left), Disk(right) | VerbatimDisk(right)) => {
+                    left.eq_ignore_ascii_case(&right)
+                }
+                (UNC(ls, lp) | VerbatimUNC(ls, lp), UNC(rs, rp) | VerbatimUNC(rs, rp)) => {
+                    ls == rs && lp == rp
+                }
+                _ => false,
+            };
+            if equivalent {
+                continue;
+            }
+        }
+        // TEMP などの 8.3 形式と canonicalize の長い名前を、既存の祖先だけで照合する。
+        #[cfg(windows)]
+        if matches!(
+            (expected, actual),
+            (Component::Normal(_), Some(Component::Normal(_)))
+        ) {
+            let expected: PathBuf = root.components().take(index + 1).collect();
+            let actual: PathBuf = absolute.components().take(index + 1).collect();
+            match same_file::is_same_file(expected, actual) {
+                Ok(true) => continue,
+                Ok(false) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(error).context("Failed to compare changed path ancestors");
+                }
+            }
+        }
+        anyhow::bail!("Changed path is outside the site: {}", path.display());
+    }
+    Ok(components.as_path().to_path_buf())
 }
 
 fn find_markdown_sources(config: &Config) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
@@ -897,6 +1100,24 @@ fn tag_output_paths(config: &Config, posts: &[PostMetadata]) -> HashSet<PathBuf>
         .collect()
 }
 
+/// 静的ファイルでは公開用の .well-known 以外の隠しパスを除外する。
+fn is_public_static_path(relative: &Path) -> bool {
+    relative.iter().enumerate().all(|(index, part)| {
+        let name = part.to_string_lossy();
+        !name.starts_with('.') || (index == 0 && name == ".well-known")
+    })
+}
+
+fn static_source_files(directory: &Path) -> Result<Vec<PathBuf>> {
+    Ok(source_files(directory, None, &[], false)?
+        .into_iter()
+        .filter(|path| {
+            path.strip_prefix(directory)
+                .is_ok_and(is_public_static_path)
+        })
+        .collect())
+}
+
 fn input_paths(
     config: &Config,
     partials: &[PathBuf],
@@ -910,7 +1131,11 @@ fn input_paths(
         .collect();
     for (directory, extension) in [(&config.r#static, None), (&config.layouts, Some("html"))] {
         let directory = absolute_path(&root, Path::new(directory));
-        paths.extend(source_files(&directory, extension, &[], false)?);
+        paths.extend(if extension.is_none() {
+            static_source_files(&directory)?
+        } else {
+            source_files(&directory, extension, &[], false)?
+        });
     }
     Ok(paths)
 }
@@ -966,6 +1191,26 @@ impl IncrementalBuilder {
         let static_dir = absolute_path(&root, Path::new(&config.r#static));
         let layouts_dir = absolute_path(&root, Path::new(&config.layouts));
         let dist_dir = absolute_path(&root, Path::new(&config.dist));
+        // 通知のプレフィックス・祖先の別名を検証してから、共通の相対形式に揃える。
+        let mut public_changes = changed_files.to_vec();
+        for changed in &mut public_changes {
+            match changed {
+                ChangedFile::Markdown(path)
+                | ChangedFile::Static(path)
+                | ChangedFile::Template(path)
+                | ChangedFile::Deleted(path) => *path = site_relative_path(&root, path)?,
+                ChangedFile::Config => {}
+            }
+        }
+        // 全体コピーと増分コピーで同じ公開範囲を使う。削除通知も同様に扱う。
+        public_changes.retain(|changed| match changed {
+            ChangedFile::Static(path) | ChangedFile::Deleted(path) => absolute_path(&root, path)
+                .strip_prefix(&static_dir)
+                .map(is_public_static_path)
+                .unwrap_or(true),
+            _ => true,
+        });
+        let changed_files = public_changes.as_slice();
         let force_full_build = self.needs_full_build
             || self.has_missing_inputs()
             || changed_files.contains(&ChangedFile::Config);
@@ -1098,7 +1343,7 @@ impl IncrementalBuilder {
                     }
                     ChangedFile::Template(path) => {
                         let absolute = absolute_path(&root, path);
-                        let key = absolute.strip_prefix(&layouts_dir)?.to_string_lossy();
+                        let key = template_path_key(absolute.strip_prefix(&layouts_dir)?);
                         for page in &pages {
                             let html = page.with_extension("html");
                             if determine_template_key(&templates, &html.to_string_lossy())

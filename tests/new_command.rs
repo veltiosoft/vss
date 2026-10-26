@@ -156,6 +156,27 @@ fn validates_arguments_and_shows_help_without_creating_files() {
 
 #[cfg(unix)]
 #[test]
+fn refuses_symlink_ancestors_without_creating_files_in_the_target() {
+    use std::os::unix::fs::symlink;
+    for destination in ["linked/site", "linked/missing/site", "broken/site"] {
+        let directory = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        symlink(outside.path(), directory.path().join("linked")).unwrap();
+        symlink(
+            directory.path().join("missing"),
+            directory.path().join("broken"),
+        )
+        .unwrap();
+        let output = run(directory.path(), &["new", destination]);
+        assert!(!output.status.success(), "accepted {destination}");
+        assert!(String::from_utf8_lossy(&output.stderr).contains("symbolic link"));
+        assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+        assert!(!directory.path().join("missing").exists());
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn refuses_symlink_destinations_including_broken_links() {
     use std::os::unix::fs::symlink;
     let directory = tempfile::tempdir().unwrap();

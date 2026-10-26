@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use axum::{
     Router,
     extract::Request,
-    http::Uri,
+    http::{HeaderValue, StatusCode, Uri},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use notify::event::{EventKind, ModifyKind};
 use notify_debouncer_full::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
@@ -88,7 +88,19 @@ async fn run_serve(config_path: &Path, port: u16) -> Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     println!("[INFO] serving on http://localhost:{}", port);
 
-    let app = Router::new()
+    let app = serve_app(dist_dir);
+
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .context("Failed to bind to address")?;
+
+    axum::serve(listener, app).await.context("Server failed")?;
+
+    Ok(())
+}
+
+fn serve_app(dist_dir: Arc<RwLock<PathBuf>>) -> Router {
+    Router::new()
         .fallback_service(tower::service_fn(move |request: Request| {
             let dist = dist_dir.read().unwrap_or_else(|e| e.into_inner()).clone();
             async move {
@@ -98,15 +110,69 @@ async fn run_serve(config_path: &Path, port: u16) -> Result<()> {
                     .await
             }
         }))
-        .layer(middleware::from_fn(html_fallback_middleware));
+        .layer(middleware::from_fn(html_fallback_middleware))
+        .layer(middleware::from_fn(dev_security_middleware))
+}
 
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .context("Failed to bind to address")?;
+fn has_local_host(request: &Request) -> bool {
+    let mut hosts = request.headers().get_all("host").iter();
+    let Some(host) = hosts.next().and_then(|value| value.to_str().ok()) else {
+        return false;
+    };
+    if hosts.next().is_some() {
+        return false;
+    }
+    let name = if let Some((name, port)) = host.split_once(':') {
+        if port.is_empty()
+            || !port.bytes().all(|b| b.is_ascii_digit())
+            || port.parse::<u16>().is_err()
+        {
+            return false;
+        }
+        name
+    } else {
+        host
+    };
+    (name.eq_ignore_ascii_case("localhost") || name == "127.0.0.1")
+        && request
+            .uri()
+            .authority()
+            .is_none_or(|authority| authority.as_str().eq_ignore_ascii_case(host))
+}
 
-    axum::serve(listener, app).await.context("Server failed")?;
-
-    Ok(())
+async fn dev_security_middleware(request: Request, next: Next) -> Response {
+    let mut response = if !has_local_host(&request) {
+        StatusCode::BAD_REQUEST.into_response()
+    } else {
+        // ServeDir と同じく一度デコードする。エンコードされた / や . も検査する。
+        let decoded = percent_encoding::percent_decode_str(request.uri().path()).decode_utf8();
+        let public_path = decoded.is_ok_and(|path| {
+            !path.contains('\0')
+                && path
+                    .replace('\\', "/")
+                    .split('/')
+                    .filter(|part| !part.is_empty())
+                    .enumerate()
+                    .all(|(index, part)| {
+                        !part.starts_with('.') || (index == 0 && part == ".well-known")
+                    })
+        });
+        if public_path {
+            next.run(request).await
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        }
+    };
+    for (name, value) in [
+        ("x-content-type-options", "nosniff"),
+        ("referrer-policy", "no-referrer"),
+        ("x-frame-options", "DENY"),
+    ] {
+        response
+            .headers_mut()
+            .insert(name, HeaderValue::from_static(value));
+    }
+    response
 }
 
 /// HTML 拡張子自動補完ミドルウェア
@@ -249,6 +315,126 @@ fn classify_changed_file(
 mod tests {
     use super::*;
     use std::fs;
+
+    async fn get(app: Router, path: &str, hosts: &[&str]) -> Response {
+        let mut request = Request::builder().uri(path);
+        for host in hosts {
+            request = request.header("host", *host);
+        }
+        app.oneshot(request.body(axum::body::Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    fn test_app() -> (tempfile::TempDir, Router) {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("index.html"), "Home").unwrap();
+        fs::write(root.path().join("about.html"), "About").unwrap();
+        fs::write(root.path().join(".env"), "PRIVATE").unwrap();
+        fs::create_dir(root.path().join(".well-known")).unwrap();
+        fs::write(root.path().join(".well-known/security.txt"), "Contact").unwrap();
+        fs::write(root.path().join(".well-known/.env"), "PRIVATE").unwrap();
+        let app = serve_app(Arc::new(RwLock::new(root.path().to_path_buf())));
+        (root, app)
+    }
+
+    #[tokio::test]
+    async fn rejects_untrusted_missing_and_duplicate_hosts() {
+        let (_root, app) = test_app();
+        for hosts in [
+            vec!["evil.example"],
+            vec!["localhost.evil.example:8080"],
+            vec!["127.0.0.1.evil.example"],
+            vec![],
+            vec!["localhost", "evil.example"],
+            vec!["localhost:invalid"],
+            vec!["user@localhost"],
+            vec!["localhost:65536"],
+        ] {
+            let response = get(app.clone(), "/", &hosts).await;
+            assert_eq!(
+                response.status(),
+                axum::http::StatusCode::BAD_REQUEST,
+                "hosts: {hosts:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn serves_local_hosts_with_security_headers_and_html_fallback() {
+        let (_root, app) = test_app();
+        for host in [
+            "localhost",
+            "localhost:8080",
+            "127.0.0.1",
+            "127.0.0.1:3000",
+            "LOCALHOST:8080",
+        ] {
+            let response = get(app.clone(), "/about", &[host]).await;
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+            assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+            assert_eq!(response.headers()["referrer-policy"], "no-referrer");
+            assert_eq!(response.headers()["x-frame-options"], "DENY");
+            assert_eq!(
+                axum::body::to_bytes(response.into_body(), 1024)
+                    .await
+                    .unwrap(),
+                "About"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn encoded_tag_urls_reach_the_unchanged_portable_output_paths() {
+        let (root, app) = test_app();
+        for (tag, url) in [
+            ("news", "/tags/news/"),
+            ("C++", "/tags/C%2B%2B/"),
+            ("a b", "/tags/a%20b/"),
+            ("日本語", "/tags/%E6%97%A5%E6%9C%AC%E8%AA%9E/"),
+        ] {
+            let directory = root.path().join("tags").join(tag);
+            fs::create_dir_all(&directory).unwrap();
+            fs::write(directory.join("index.html"), tag).unwrap();
+            let response = get(app.clone(), url, &["localhost:8080"]).await;
+            assert_eq!(response.status(), StatusCode::OK, "{url}");
+            assert_eq!(
+                axum::body::to_bytes(response.into_body(), 1024)
+                    .await
+                    .unwrap(),
+                tag
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn denies_hidden_and_traversal_paths_but_serves_public_well_known_files() {
+        let (_root, app) = test_app();
+        for path in [
+            "/.env",
+            "/%2eenv",
+            "/.git/config",
+            "/.well-known/.env",
+            "/nested%2f.env",
+            "/../outside.txt",
+            "/..%2foutside.txt",
+            "/%2e%2e/outside.txt",
+            "/%00",
+        ] {
+            let response = get(app.clone(), path, &["localhost:8080"]).await;
+            assert_eq!(
+                response.status(),
+                axum::http::StatusCode::NOT_FOUND,
+                "path: {path}"
+            );
+        }
+        assert_eq!(
+            get(app, "/.well-known/security.txt", &["localhost"])
+                .await
+                .status(),
+            axum::http::StatusCode::OK
+        );
+    }
 
     #[test]
     fn classifies_absolute_paths_using_normalized_configuration() {

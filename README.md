@@ -29,8 +29,15 @@ Markdown discovery skips directories whose names start with `.`, at any depth
 below the site root. This applies to pages and Markdown partials, so files inside
 `.claude/`, `.github/`, or `posts/.drafts/` are not rendered or included in tag
 pages. The site root itself and dot-prefixed Markdown filenames are still allowed.
-Static files and templates retain their existing behavior, including copying
-`static/.well-known/` and loading explicitly configured dot-prefixed directories.
+Static copying excludes dotfiles and dot-directories, except for `.well-known/`
+at the static root. Hidden paths inside `.well-known/` are still excluded.
+Templates can use internal dot-directories and explicitly configured dot-prefixed
+source roots.
+
+`dist`, `static`, and `layouts` must be relative directories inside the site.
+The site root, parent traversal, absolute paths, and overlapping input/output
+paths are rejected before old outputs are removed. Output paths cannot traverse
+symbolic links or overlap `partials/`, `.git/`, or the configuration file.
 
 Symbolic links are excluded from builds, including links to Markdown, partials,
 templates, static files, and directories containing them. Use regular files and
@@ -41,6 +48,27 @@ YAML front matter is limited to 64 KiB per file. Each file can have at most
 128 tags, with at most 256 UTF-8 bytes per tag. These limits also apply to
 Markdown partials. Invalid front matter or exceeded limits cause a build error;
 the Markdown body is not subject to the front matter size limit.
+
+## Portable tag names
+
+Tags with filenames that are unsafe on Windows are excluded from rendered tag
+links and tag-page generation on every OS; they do not fail the build. No filename
+substitution is performed, so sanitization cannot introduce name collisions.
+Excluded names contain `?`, `*`, `<`, `>`, `|`, or `"`, end with a dot or space, or
+use a reserved device name such as `CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, or
+`LPT1`–`LPT9` (case-insensitive, including extensions). `CONIN$`, `CONOUT$`, and
+the Windows-reserved superscript-digit variants are also excluded. Existing
+restrictions on traversal, path separators, colons, and control characters remain.
+
+Safe tags keep their existing URL encoding and output paths: `C++` uses
+`/tags/C%2B%2B/` and `dist/tags/C++/index.html`; `a b` uses `/tags/a%20b/` and
+`dist/tags/a b/index.html`. Japanese tag names are unchanged.
+
+## Development server
+
+The development server accepts only `localhost` and `127.0.0.1` Host headers
+(with an optional port). It does not serve hidden paths, except public files
+under the root `.well-known/` directory.
 
 ## Markdown partials
 

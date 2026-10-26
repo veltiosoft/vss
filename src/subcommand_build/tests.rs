@@ -9,6 +9,73 @@ use tempfile::TempDir;
 static CWD: Mutex<()> = Mutex::new(());
 
 #[test]
+fn site_relative_paths_accept_canonical_prefixes_and_missing_files() {
+    let _site = Site::new();
+    let root = std::env::current_dir().unwrap();
+    let canonical = root.canonicalize().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    for base in [&root, &canonical] {
+        for (path, expected) in [
+            (root.join("index.md"), "index.md"),
+            (canonical.join("index.md"), "index.md"),
+            (canonical.join("deleted.md"), "deleted.md"),
+        ] {
+            assert_eq!(
+                site_relative_path(base, &path).unwrap(),
+                Path::new(expected)
+            );
+        }
+        assert!(site_relative_path(base, &root.parent().unwrap().join("outside.md")).is_err());
+        assert!(
+            site_relative_path(
+                base,
+                &outside.path().canonicalize().unwrap().join("index.md")
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn template_lookups_use_portable_nested_paths() {
+    let templates = HashMap::from([
+        (
+            "nested/page.html".to_string(),
+            ramhorns::Template::new("page").unwrap(),
+        ),
+        (
+            "nested/default.html".to_string(),
+            ramhorns::Template::new("default").unwrap(),
+        ),
+    ]);
+    for (file, expected) in [
+        ("page.html", "nested/page.html"),
+        ("other.html", "nested/default.html"),
+    ] {
+        let native = Path::new("nested").join(file);
+        assert_eq!(
+            determine_template_key(&templates, &native.to_string_lossy()),
+            Some(expected)
+        );
+    }
+    assert_eq!(
+        template_path_key(&Path::new("nested").join("page.html")),
+        "nested/page.html"
+    );
+
+    let _site = Site::new();
+    let loaded = load_templates("layouts").unwrap();
+    assert!(loaded.contains_key("tags/default.html"));
+    assert_eq!(
+        determine_template_key(
+            &loaded,
+            &Path::new("tags").join("default.html").to_string_lossy()
+        ),
+        Some("tags/default.html")
+    );
+}
+
+#[test]
 fn rejects_frontmatter_resource_amplification_before_building_pages() {
     let too_large = format!("---\ntitle: {}\n---\nHome", "x".repeat(65_536));
     assert!(parse_frontmatter(&too_large).is_err());
@@ -133,6 +200,77 @@ fn rejects_tag_names_that_can_be_url_schemes_or_windows_prefixes() {
 }
 
 #[test]
+fn excludes_nonportable_tag_filenames_without_breaking_the_build() {
+    let _site = Site::new();
+    let invalid = [
+        "a?b",
+        "a*b",
+        "a<b",
+        "a>b",
+        "a|b",
+        "a\"b",
+        "trailing.",
+        "trailing ",
+        "CON",
+        "con.txt",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM1",
+        "LPT9",
+        "COM¹",
+        "LPT²",
+        "CONIN$",
+        "CONOUT$",
+    ];
+    for tag in invalid {
+        assert!(!is_safe_tag_name(tag), "accepted {tag:?}");
+    }
+    let tags = invalid
+        .iter()
+        .map(|tag| format!("'{tag}'"))
+        .chain([
+            "'news'".into(),
+            "'日本語'".into(),
+            "'C++'".into(),
+            "'a b'".into(),
+        ])
+        .collect::<Vec<String>>()
+        .join(",");
+    write("index.md", &format!("---\ntags: [{tags}]\n---\nHome"));
+    write(
+        "layouts/default.html",
+        "{{#tags}}<a href=\"{{url}}\">{{name}}</a>{{/tags}}",
+    );
+    run_build(Path::new("vss.toml")).unwrap();
+    let page = read("dist/index.html");
+    for (name, url) in [
+        ("news", "/tags/news/"),
+        ("日本語", "/tags/%E6%97%A5%E6%9C%AC%E8%AA%9E/"),
+        ("C++", "/tags/C%2B%2B/"),
+        ("a b", "/tags/a%20b/"),
+    ] {
+        assert!(page.contains(&format!("<a href=\"{url}\">{name}</a>")));
+        assert!(Path::new(&format!("dist/tags/{name}/index.html")).is_file());
+    }
+    assert_eq!(fs::read_dir("dist/tags").unwrap().count(), 4);
+}
+
+#[test]
+fn incremental_build_removes_tag_pages_when_tags_become_nonportable() {
+    let site = Site::new();
+    let mut builder = site.builder();
+    write("index.md", "---\ntags: ['a?b', CON, 'C++']\n---\nChanged");
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+        .unwrap();
+    assert!(!Path::new("dist/tags/news").exists());
+    assert_eq!(fs::read_dir("dist/tags").unwrap().count(), 1);
+    assert!(Path::new("dist/tags/C++/index.html").is_file());
+    matches_full_build("dist");
+}
+
+#[test]
 fn relative_tag_patterns_cannot_publish_javascript_links() {
     let _site = Site::new();
     write("vss.toml", "[build.tags]\nurl_pattern = '{tag}.html'");
@@ -157,7 +295,7 @@ fn tag_urls_encode_path_characters_and_keep_output_paths_consistent() {
     for (tag, encoded) in [
         ("C++", "C%2B%2B"),
         ("a b", "a%20b"),
-        ("a#b?c%20", "a%23b%3Fc%2520"),
+        ("a#bc%20", "a%23bc%2520"),
         ("日本語", "%E6%97%A5%E6%9C%AC%E8%AA%9E"),
     ] {
         assert_eq!(tag_url(&config, tag), format!("/tags/{encoded}/"));
@@ -476,6 +614,52 @@ fn refreshes_og_images_in_incremental_builds_and_after_base_url_changes() {
         .unwrap();
     assert_eq!(read("dist/index.html"), "|");
     matches_full_build("dist");
+}
+
+#[test]
+fn incremental_static_updates_never_publish_hidden_files() {
+    let site = Site::new();
+    let mut builder = site.builder();
+    for path in [
+        ".env",
+        ".git/config",
+        "nested/.ssh/key",
+        ".well-known/.env",
+        "nested/.well-known/secret",
+    ] {
+        let source = format!("static/{path}");
+        write(&source, "PRIVATE SENTINEL");
+        builder
+            .rebuild(&[ChangedFile::Static(site.path(&source))])
+            .unwrap();
+        assert!(!Path::new("dist").join(path).exists(), "published {path}");
+        write(&source, "CHANGED PRIVATE SENTINEL");
+        write("other.md", "Updated page");
+        builder
+            .rebuild(&[
+                ChangedFile::Static(site.path(&source)),
+                ChangedFile::Markdown(site.path("other.md")),
+            ])
+            .unwrap();
+        assert!(!Path::new("dist").join(path).exists());
+        fs::remove_file(&source).unwrap();
+        builder
+            .rebuild(&[ChangedFile::Deleted(site.path(&source))])
+            .unwrap();
+        matches_full_build("dist");
+    }
+}
+
+#[test]
+fn invalid_source_config_preserves_outputs_during_incremental_rebuild() {
+    let site = Site::new();
+    let mut builder = site.builder();
+    let before = output_tree("dist");
+    for setting in ["static", "layouts"] {
+        write("vss.toml", &format!("{setting} = '../outside'"));
+        assert!(builder.rebuild(&[ChangedFile::Config]).is_err());
+        assert_eq!(output_tree("dist"), before);
+    }
 }
 
 #[test]
