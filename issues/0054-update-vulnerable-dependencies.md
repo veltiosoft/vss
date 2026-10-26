@@ -45,6 +45,17 @@
 - [ ] `cargo test --all --locked` と Clippy、フォーマット検査が成功する。
 - [ ] CI に依存脆弱性検査のステップが追加され、失敗時にビルドが止まる。
 
+## 対応状況
+
+- `cargo tree` と OSV API の照会で、指摘の版と advisory が現状にも該当することを確認した。追加した依存バージョン・YAML 依存の回帰テストが修正前に失敗することも確認した。
+- `self_update` を 1.3.2、tar を 0.4.46、rustls を 0.23.46、zip を 9.1.1、time を 0.3.55、anyhow を 1.0.104、bytes を 1.12.1、tokio を 1.54.1 へ更新した。quick-xml は依存から除外された。
+- TLS は `ureq` と `rustls` / `webpki-roots` を使い、従来のルート証明書の不信任に関する回帰テストも維持した。
+- YAML を `serde-saphyr` 2.0.0 へ移行し、`serde_yaml` / `unsafe-libyaml` を除去した。既存の frontmatter 境界値・参照展開のテストは成功している。
+- OSV API で更新後の lockfile 全 315 パッケージを再検査した。残った advisory は ramhorns のマクロ経由の `proc-macro-error` に対する未メンテナンス警告 RUSTSEC-2024-0370 のみ。既知脆弱性の検出はない。
+- `cargo test --all --locked` の全 60 テスト、Clippy、フォーマット・差分検査が成功した。CI には失敗を無視しない `cargo audit` ジョブを追加した。
+- ローカルに `cargo-audit` がないため、そのコマンド自体と GitHub 上の CI 実行は未検証。署名検証の問題は解消していない。
+- 未クローズ。`Completed:` は更新していない。
+
 ## 関連
 
 - [0053](0053-bug-self-update-no-signature.md): 自己更新の署名検証。
