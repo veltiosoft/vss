@@ -49,6 +49,12 @@ YAML front matter is limited to 64 KiB per file. Each file can have at most
 Markdown partials. Invalid front matter or exceeded limits cause a build error;
 the Markdown body is not subject to the front matter size limit.
 
+## Development server
+
+The development server accepts only `localhost` and `127.0.0.1` Host headers
+(with an optional port). It does not serve hidden paths, except public files
+under the root `.well-known/` directory.
+
 ## Markdown partials
 
 Place reusable Markdown in a `partials/` directory at the site root (the working
