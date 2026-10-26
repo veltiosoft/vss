@@ -210,6 +210,10 @@ fn rejects_outside_input_directories_before_deleting_outputs() {
                 "C:victim",
                 "dist",
                 "dist/nested",
+                ".git.",
+                ".git ",
+                ".ssh.",
+                ".env.",
             ] {
                 write(
                     root.path(),

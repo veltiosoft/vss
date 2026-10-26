@@ -287,12 +287,7 @@ pub(crate) fn load_config(path: &Path) -> Result<Config> {
     for (setting, value) in [("static", &config.r#static), ("layouts", &config.layouts)] {
         let directory = site_directory(&root, value, setting)?;
         anyhow::ensure!(
-            !directory.strip_prefix(&root)?.iter().any(|part| {
-                let part = part.to_string_lossy();
-                [".git", ".ssh", ".env"]
-                    .iter()
-                    .any(|private| part.eq_ignore_ascii_case(private))
-            }),
+            !has_private_source_component(&root, &directory)?,
             "{setting} must not refer to private directories"
         );
     }
@@ -316,6 +311,36 @@ fn site_directory(root: &Path, value: &str, setting: &str) -> Result<PathBuf> {
         "{setting} must not be the site root or outside the site"
     );
     Ok(directory)
+}
+
+fn has_private_source_component(root: &Path, directory: &Path) -> Result<bool> {
+    for ancestor in directory.ancestors().take_while(|path| *path != root) {
+        let name = ancestor
+            .file_name()
+            .context("Invalid source directory")?
+            .to_string_lossy();
+        // Win32 は末尾のドット・空白を取り除いて解決する。
+        let name = name.trim_end_matches(['.', ' ']);
+        for private in [".git", ".ssh", ".env"] {
+            if name.eq_ignore_ascii_case(private) {
+                return Ok(true);
+            }
+            // Windows の短縮名など、文字列だけでは判別できない別名も拒否する。
+            let protected = ancestor
+                .parent()
+                .context("Invalid source parent")?
+                .join(private);
+            match same_file::is_same_file(ancestor, protected) {
+                Ok(true) => return Ok(true),
+                Ok(false) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(error).context("Failed to inspect private source aliases");
+                }
+            }
+        }
+    }
+    Ok(false)
 }
 
 fn ensure_no_symlink_ancestors(path: &Path, setting: &str) -> Result<()> {
