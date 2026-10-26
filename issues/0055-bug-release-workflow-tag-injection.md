@@ -35,6 +35,15 @@
 - [ ] リリース成果物の署名・チェックサム・attestation が生成される。
 - [ ] 正常なタグでリリース作成・アップロード・公開が成功する。
 
+## 対応状況
+
+- ワークフローの `run` をローカルで実行する回帰テストにより、タグのコマンド置換で一時ディレクトリにファイルが作られることを確認した。権限・SHA 固定・タグ書式のテストも修正前に失敗した。
+- タグは `env.VERSION` 経由で引用し、リリース用の書式を検査するようにした。既定権限は `contents: read`、リリース操作ジョブだけに書き込みを許可した。
+- checkout / rust-toolchain / attest-build-provenance の commit SHA を上流の ref から確認して固定した。ビルドジョブだけに attestation 用の権限を付けた。
+- アーカイブごとの SHA-256 ファイルと provenance attestation を生成する。署名鍵が未確定のため、zipsign による成果物署名は関連 issue と同じく保留している。
+- `cargo test --test release_workflow` の全 4 テストが成功した。悪意あるタグの不実行、正常タグの受理、gh へのリテラル引数渡し、チェックサム生成を確認した。GitHub 上でのリリース作成・アップロード・公開は実行していない。
+- 一部対応・未クローズ。`Completed:` は更新していない。
+
 ## 関連
 
 - [0053](0053-bug-self-update-no-signature.md): 自己更新の署名検証。
