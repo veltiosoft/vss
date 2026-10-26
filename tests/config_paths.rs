@@ -188,6 +188,100 @@ fn rebuilds_dedicated_site_local_dist_directories() {
     }
 }
 
+#[test]
+fn rejects_outside_input_directories_before_deleting_outputs() {
+    for setting in ["static", "layouts"] {
+        for subcommand in ["build", "serve"] {
+            let root = site();
+            let absolute = root.path().join("victim").display().to_string();
+            write(
+                root.path(),
+                "victim/default.html",
+                "OUTSIDE TEMPLATE {{{contents}}}",
+            );
+            for value in [
+                "../victim",
+                &absolute,
+                "",
+                ".",
+                "..",
+                "//server/share",
+                r"C:\victim",
+                "C:victim",
+                "dist",
+                "dist/nested",
+            ] {
+                write(
+                    root.path(),
+                    "site/vss.toml",
+                    &format!("{setting} = '{value}'"),
+                );
+                let output = command(&root.path().join("site"), subcommand);
+                assert!(!output.status.success(), "accepted {setting} = {value:?}");
+                assert_preserved(root.path());
+                assert!(!root.path().join("site/dist/important.txt").exists());
+            }
+        }
+    }
+}
+
+#[test]
+fn excludes_private_static_paths_but_preserves_well_known() {
+    let root = site();
+    for path in [
+        ".env",
+        ".git/config",
+        ".ssh/id_rsa",
+        "nested/.env",
+        "nested/.ssh/key",
+        ".well-known/.env",
+        ".well-known/.git/config",
+        "nested/.well-known/secret",
+    ] {
+        write(
+            root.path(),
+            &format!("site/static/{path}"),
+            "PRIVATE SENTINEL",
+        );
+    }
+    write(
+        root.path(),
+        "site/static/.well-known/security.txt",
+        "Contact: public",
+    );
+    write(
+        root.path(),
+        "site/static/.well-known/acme-challenge/token",
+        "public token",
+    );
+    let output = command(&root.path().join("site"), "build");
+    assert!(output.status.success());
+    for path in [
+        ".env",
+        ".git",
+        ".ssh",
+        "nested/.env",
+        "nested/.ssh",
+        ".well-known/.env",
+        ".well-known/.git",
+        "nested/.well-known",
+    ] {
+        assert!(
+            !root.path().join(format!("site/dist/{path}")).exists(),
+            "published {path}"
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(root.path().join("site/dist/.well-known/security.txt")).unwrap(),
+        "Contact: public"
+    );
+    assert!(
+        root.path()
+            .join("site/dist/.well-known/acme-challenge/token")
+            .is_file()
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn rejects_dist_symlinks_and_symlink_ancestors() {

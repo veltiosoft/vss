@@ -29,12 +29,15 @@ Markdown discovery skips directories whose names start with `.`, at any depth
 below the site root. This applies to pages and Markdown partials, so files inside
 `.claude/`, `.github/`, or `posts/.drafts/` are not rendered or included in tag
 pages. The site root itself and dot-prefixed Markdown filenames are still allowed.
-Static files and templates retain their existing behavior, including copying
-`static/.well-known/` and loading explicitly configured dot-prefixed directories.
+Static copying excludes dotfiles and dot-directories, except for `.well-known/`
+at the static root. Hidden paths inside `.well-known/` are still excluded.
+Templates can use internal dot-directories and explicitly configured dot-prefixed
+source roots.
 
-`dist` must be a relative directory inside the site. The site root, parent
-traversal, absolute paths, symbolic links, and overlap with input directories,
-Git directories, or the configuration file are rejected before outputs are removed.
+`dist`, `static`, and `layouts` must be relative directories inside the site.
+The site root, parent traversal, absolute paths, and overlapping input/output
+paths are rejected before old outputs are removed. Output paths cannot traverse
+symbolic links or overlap `partials/`, `.git/`, or the configuration file.
 
 Symbolic links are excluded from builds, including links to Markdown, partials,
 templates, static files, and directories containing them. Use regular files and

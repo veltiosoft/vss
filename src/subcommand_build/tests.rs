@@ -479,6 +479,52 @@ fn refreshes_og_images_in_incremental_builds_and_after_base_url_changes() {
 }
 
 #[test]
+fn incremental_static_updates_never_publish_hidden_files() {
+    let site = Site::new();
+    let mut builder = site.builder();
+    for path in [
+        ".env",
+        ".git/config",
+        "nested/.ssh/key",
+        ".well-known/.env",
+        "nested/.well-known/secret",
+    ] {
+        let source = format!("static/{path}");
+        write(&source, "PRIVATE SENTINEL");
+        builder
+            .rebuild(&[ChangedFile::Static(site.path(&source))])
+            .unwrap();
+        assert!(!Path::new("dist").join(path).exists(), "published {path}");
+        write(&source, "CHANGED PRIVATE SENTINEL");
+        write("other.md", "Updated page");
+        builder
+            .rebuild(&[
+                ChangedFile::Static(site.path(&source)),
+                ChangedFile::Markdown(site.path("other.md")),
+            ])
+            .unwrap();
+        assert!(!Path::new("dist").join(path).exists());
+        fs::remove_file(&source).unwrap();
+        builder
+            .rebuild(&[ChangedFile::Deleted(site.path(&source))])
+            .unwrap();
+        matches_full_build("dist");
+    }
+}
+
+#[test]
+fn invalid_source_config_preserves_outputs_during_incremental_rebuild() {
+    let site = Site::new();
+    let mut builder = site.builder();
+    let before = output_tree("dist");
+    for setting in ["static", "layouts"] {
+        write("vss.toml", &format!("{setting} = '../outside'"));
+        assert!(builder.rebuild(&[ChangedFile::Config]).is_err());
+        assert_eq!(output_tree("dist"), before);
+    }
+}
+
+#[test]
 fn copies_and_deletes_static_files_with_absolute_paths_and_mixed_batches() {
     let site = Site::new();
     let mut builder = site.builder();

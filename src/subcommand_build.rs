@@ -283,6 +283,19 @@ pub(crate) fn load_config(path: &Path) -> Result<Config> {
             && !relative.split('/').any(|part| matches!(part, "." | "..")),
         "Tag URL pattern must be a path inside the site"
     );
+    let root = std::env::current_dir().context("Failed to get current directory")?;
+    for (setting, value) in [("static", &config.r#static), ("layouts", &config.layouts)] {
+        let directory = site_directory(&root, value, setting)?;
+        anyhow::ensure!(
+            !directory.strip_prefix(&root)?.iter().any(|part| {
+                let part = part.to_string_lossy();
+                [".git", ".ssh", ".env"]
+                    .iter()
+                    .any(|private| part.eq_ignore_ascii_case(private))
+            }),
+            "{setting} must not refer to private directories"
+        );
+    }
     validate_dist(&config, path)?;
     Ok(config)
 }
@@ -565,7 +578,7 @@ fn copy_static_files(static_dir: &str, dist_dir: &str) -> Result<()> {
         return Ok(());
     }
 
-    for src_path in source_files(&static_path, None, &[], false)? {
+    for src_path in static_source_files(&static_path)? {
         // static/ からの相対パスを取得
         if let Ok(rel_path) = src_path.strip_prefix(&static_path) {
             let dest_path = Path::new(dist_dir).join(rel_path);
@@ -986,6 +999,24 @@ fn tag_output_paths(config: &Config, posts: &[PostMetadata]) -> HashSet<PathBuf>
         .collect()
 }
 
+/// 静的ファイルでは公開用の .well-known 以外の隠しパスを除外する。
+fn is_public_static_path(relative: &Path) -> bool {
+    relative.iter().enumerate().all(|(index, part)| {
+        let name = part.to_string_lossy();
+        !name.starts_with('.') || (index == 0 && name == ".well-known")
+    })
+}
+
+fn static_source_files(directory: &Path) -> Result<Vec<PathBuf>> {
+    Ok(source_files(directory, None, &[], false)?
+        .into_iter()
+        .filter(|path| {
+            path.strip_prefix(directory)
+                .is_ok_and(is_public_static_path)
+        })
+        .collect())
+}
+
 fn input_paths(
     config: &Config,
     partials: &[PathBuf],
@@ -999,7 +1030,11 @@ fn input_paths(
         .collect();
     for (directory, extension) in [(&config.r#static, None), (&config.layouts, Some("html"))] {
         let directory = absolute_path(&root, Path::new(directory));
-        paths.extend(source_files(&directory, extension, &[], false)?);
+        paths.extend(if extension.is_none() {
+            static_source_files(&directory)?
+        } else {
+            source_files(&directory, extension, &[], false)?
+        });
     }
     Ok(paths)
 }
@@ -1055,6 +1090,21 @@ impl IncrementalBuilder {
         let static_dir = absolute_path(&root, Path::new(&config.r#static));
         let layouts_dir = absolute_path(&root, Path::new(&config.layouts));
         let dist_dir = absolute_path(&root, Path::new(&config.dist));
+        // 全体コピーと増分コピーで同じ公開範囲を使う。削除通知も同様に扱う。
+        let public_changes: Vec<_> = changed_files
+            .iter()
+            .filter(|changed| match changed {
+                ChangedFile::Static(path) | ChangedFile::Deleted(path) => {
+                    absolute_path(&root, path)
+                        .strip_prefix(&static_dir)
+                        .map(is_public_static_path)
+                        .unwrap_or(true)
+                }
+                _ => true,
+            })
+            .cloned()
+            .collect();
+        let changed_files = public_changes.as_slice();
         let force_full_build = self.needs_full_build
             || self.has_missing_inputs()
             || changed_files.contains(&ChangedFile::Config);
