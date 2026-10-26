@@ -181,12 +181,19 @@ fn version_step_rejects_malicious_tags_and_accepts_release_tags() {
         .as_ref()
         .unwrap();
     for (tag, accepted) in [
-        ("v1.2.3", true),
-        ("1.2.3", true),
-        ("v1.2.3-rc.1", true),
-        ("v1.2.3$(id)", false),
-        ("v1.2.3`id`", false),
-        ("v1.2.3;id", false),
+        // CalVer YYYY.M.MICRO (https://calver.org): the major is the full
+        // four-digit year and the month segment runs 1-12, never zero-padded.
+        ("v2026.10.0", true),
+        ("2026.10.0", true),
+        ("v2026.10.1", true),
+        ("v2026.10.0-rc.1", true),
+        ("v26.10.0", false),
+        ("v2026.13.0", false),
+        ("v2026.010.0", false),
+        ("v2026.10.0.1", false),
+        ("v2026.10.0$(id)", false),
+        ("v2026.10.0`id`", false),
+        ("v2026.10.0;id", false),
         ("--help", false),
         ("", false),
     ] {

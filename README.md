@@ -6,6 +6,13 @@ Veltiosoft Static Site Generator.
 
 Read: https://vss.veltiosoft.dev/
 
+## Versioning
+
+vss uses [Calendar Versioning](https://calver.org/). Versions follow **`YYYY.M.MICRO`**;
+for example, `2026.10.0` is the first release of October 2026, and the final number
+counts releases within that month. Segments are unpadded, so every version is also
+a valid SemVer string.
+
 ## Create a site
 
 ```sh

@@ -28,7 +28,11 @@ jobs:
         shell: bash
         run: |
           VERSION="$GITHUB_REF_NAME"
-          if [[ ! "$VERSION" =~ ^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+          # CalVer scheme YYYY.M.MICRO (https://calver.org): the major is the
+          # full four-digit year, the minor is the month (1-12, never
+          # zero-padded), and the micro counts releases within the month.
+          # Unpadded segments keep every version a valid SemVer string.
+          if [[ ! "$VERSION" =~ ^v?[1-9][0-9]{3}\.(1[0-2]|[1-9])\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
             printf 'Invalid release tag: %s\n' "$VERSION" >&2
             exit 1
           fi

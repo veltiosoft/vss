@@ -25,7 +25,7 @@ curl -sfL https://raw.githubusercontent.com/veltiosoft/vss/main/scripts/install.
 
 specific version
 ```sh
-curl -sfL https://raw.githubusercontent.com/veltiosoft/vss/main/scripts/install.sh | sh -s v0.0.1
+curl -sfL https://raw.githubusercontent.com/veltiosoft/vss/main/scripts/install.sh | sh -s v2026.10.0
 ```
 
 For Windows (with PowerShell)
@@ -35,7 +35,7 @@ irm https://raw.githubusercontent.com/veltiosoft/vss/main/scripts/install.ps1 | 
 
 specific version
 ```powershell
-$v="v0.0.1"; irm https://raw.githubusercontent.com/veltiosoft/vss/main/scripts/install.ps1 | iex
+$v="v2026.10.0"; irm https://raw.githubusercontent.com/veltiosoft/vss/main/scripts/install.ps1 | iex
 ```
 
 ## Contents

@@ -73,6 +73,25 @@ fn update() -> Result<self_update::VersionStatus> {
 mod tests {
     use super::*;
 
+    // The CalVer scheme is YYYY.M.MICRO (https://calver.org): the major is
+    // the full year, the minor is the unpadded month, and the micro counts
+    // releases within the month. Unpadded segments keep every version
+    // parseable as SemVer, which is the comparison the updater relies on.
+    #[test]
+    fn calendar_versions_sort_as_semver_for_self_update() {
+        // The first CalVer release supersedes the old SemVer releases.
+        assert!(self_update::version::bump_is_greater("0.22.0", "2026.10.0").unwrap());
+        // Releases within a month count up, and the next month resets the micro.
+        assert!(self_update::version::bump_is_greater("2026.10.0", "2026.10.1").unwrap());
+        assert!(self_update::version::bump_is_greater("2026.10.9", "2026.11.0").unwrap());
+        // The year rolls over correctly.
+        assert!(self_update::version::bump_is_greater("2026.12.31", "2027.1.0").unwrap());
+        // Pre-release modifiers sort before their release.
+        assert!(self_update::version::bump_is_greater("2026.10.0-rc.1", "2026.10.0").unwrap());
+        // An equal version is not an update.
+        assert!(!self_update::version::bump_is_greater("2026.10.0", "2026.10.0").unwrap());
+    }
+
     #[test]
     fn supported_platform_mappings_are_preserved() {
         for (os, arch, expected) in [
