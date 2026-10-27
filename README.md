@@ -13,6 +13,21 @@ for example, `2026.10.0` is the first release of October 2026, and the final num
 counts releases within that month. Segments are unpadded, so every version is also
 a valid SemVer string.
 
+## Self update
+
+`vss self update` requires an embedded trusted signing key and a versioned,
+signed release archive with its SHA-256 file. It verifies the archive before
+extracting it and asks for confirmation before replacing the binary. In a
+non-interactive shell, use `vss self update --yes`; this skips confirmation only,
+never verification.
+
+**Production signing keys are not configured yet. Self update currently fails
+closed, including with `--yes`.** Unsigned older releases are not a fallback.
+See [signed update deployment and migration](docs/signed-updates.md) for the
+release/installer contract, administrator decisions still needed, and the limits
+of bootstrapping from an unsigned client. Do not treat an unsigned checksum from
+the same Release as independent authentication for the first signed version.
+
 ## Create a site
 
 ```sh

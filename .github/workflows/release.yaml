@@ -38,6 +38,22 @@ jobs:
           fi
           printf 'VERSION=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Verify tag matches Cargo package version
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import tomllib
+
+          tag = os.environ["VERSION"]
+          version = tag.removeprefix("v")
+          package = tomllib.loads(pathlib.Path("Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
+          if version != package:
+              raise SystemExit(f"Release tag {tag!r} does not match Cargo package version {package!r}")
+          PY
+
       - name: Create draft release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -110,7 +126,7 @@ jobs:
 
       - name: Build
         shell: bash
-        run: cargo build --release --target ${{ matrix.platform.target }}
+        run: cargo build --locked --release --target ${{ matrix.platform.target }}
         env:
           VSS_COMMIT: ${{ steps.get_commit.outputs.commit }}
 
