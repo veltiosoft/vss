@@ -46,42 +46,95 @@ fn update(yes: bool) -> Result<()> {
     // Fetch exactly once and preserve the raw tag until validated. The backend's
     // get_latest_release() strips *all* leading v characters before exposing it.
     let release = latest_release()?;
-    let version = canonical_version(release.version())?;
-    if !is_newer(current, &version)? {
-        println!("✓ すでに最新バージョン ({current}) です");
-        return Ok(());
-    }
-    let name = asset_name(&version, target)?;
-    let archive_asset = exact_asset(&release, &name)?;
-    let checksum_asset = exact_asset(&release, &format!("{name}.sha256"))?;
-    let mut checksum = Vec::new();
-    download(checksum_asset, 4096, &mut checksum)?;
-    let download_dir = tempfile::tempdir()?;
-    let path = download_dir.path().join(&name);
-    {
-        let mut file = File::create(&path)?;
-        download(archive_asset, signed::MAX_ARCHIVE_SIZE, &mut file)?;
-        file.sync_all()?;
-    }
-    signed::apply(
-        &path,
-        &name,
-        &checksum,
-        archive_asset.digest(),
+    let outcome = apply_release(
+        &release,
+        current,
+        target,
         TRUSTED_KEYS,
-        || {
-            println!("現在: {current}\n更新先: {version}\n対象: {target}\n成果物: {name}");
+        download,
+        |summary| {
+            println!(
+                "現在: {}\n更新先: {}\n対象: {}\n成果物: {}",
+                summary.current, summary.version, summary.target, summary.name
+            );
             println!("✓ 信頼済み鍵の署名・SHA-256・アーカイブ構造の検証に成功しました");
             confirm(yes, &mut io::stdin().lock(), &mut io::stdout().lock())
         },
         |binary| Ok(self_replace::self_replace(binary)?),
-    )
-    .map(|installed| {
-        if installed {
-            println!("✓ vss を {version} に更新しました。コマンドを再実行してください。");
-        } else {
-            println!("更新をキャンセルしました。");
+    )?;
+    match outcome {
+        UpdateOutcome::UpToDate => println!("✓ すでに最新バージョン ({current}) です"),
+        UpdateOutcome::Cancelled => println!("更新をキャンセルしました。"),
+        UpdateOutcome::Updated(version) => {
+            println!("✓ vss を {version} に更新しました。コマンドを再実行してください。")
         }
+    }
+    Ok(())
+}
+
+struct UpdateSummary<'a> {
+    current: &'a str,
+    version: String,
+    target: &'a str,
+    name: String,
+}
+
+#[derive(Debug, PartialEq)]
+enum UpdateOutcome {
+    UpToDate,
+    Cancelled,
+    Updated(String),
+}
+
+// Private dependency injection permits offline tests of the entire selection →
+// download → verification → confirmation → replacement path. No runtime trust,
+// URL override, or verification bypass is exposed by the production CLI.
+fn apply_release(
+    release: &Release,
+    current: &str,
+    target: &str,
+    keys: &[self_update::VerifyingKey],
+    mut fetch: impl FnMut(&ReleaseAsset, u64, &mut dyn Write) -> Result<()>,
+    approve: impl FnOnce(&UpdateSummary<'_>) -> Result<bool>,
+    install: impl FnOnce(&std::path::Path) -> Result<()>,
+) -> Result<UpdateOutcome> {
+    signed::require_keys(keys)?;
+    let version = canonical_version(release.version())?;
+    if !is_newer(current, &version)? {
+        return Ok(UpdateOutcome::UpToDate);
+    }
+    let name = asset_name(&version, target)?;
+    let archive_asset = exact_asset(release, &name)?;
+    let checksum_asset = exact_asset(release, &format!("{name}.sha256"))?;
+    let mut checksum = Vec::new();
+    fetch(checksum_asset, 4096, &mut checksum)?;
+    signed::checksum(&checksum, &name)?; // Reject malformed sums before pulling the archive.
+    let download_dir = tempfile::tempdir()?;
+    let path = download_dir.path().join(&name);
+    {
+        let mut file = File::create(&path)?;
+        fetch(archive_asset, signed::MAX_ARCHIVE_SIZE, &mut file)?;
+        file.sync_all()?;
+    }
+    let summary = UpdateSummary {
+        current,
+        version,
+        target,
+        name,
+    };
+    let installed = signed::apply(
+        &path,
+        &summary.name,
+        &checksum,
+        archive_asset.digest(),
+        keys,
+        || approve(&summary),
+        install,
+    )?;
+    Ok(if installed {
+        UpdateOutcome::Updated(summary.version)
+    } else {
+        UpdateOutcome::Cancelled
     })
 }
 
@@ -99,7 +152,7 @@ fn confirm(yes: bool, input: &mut impl io::BufRead, output: &mut impl Write) -> 
     Ok(matches!(answer.trim(), "y" | "Y" | "yes" | "YES"))
 }
 
-fn download(asset: &ReleaseAsset, limit: u64, output: &mut impl Write) -> Result<()> {
+fn download(asset: &ReleaseAsset, limit: u64, output: &mut dyn Write) -> Result<()> {
     ensure!(
         url::Url::parse(asset.download_url())?.scheme() == "https",
         "HTTPS の成果物 URL が必要です"
@@ -216,6 +269,11 @@ fn target_for(os: &str, arch: &str) -> Result<&'static str> {
         _ => bail!("Unsupported platform: {os} {arch}. Install vss from source."),
     }
 }
+
+#[cfg(test)]
+mod fixtures;
+#[cfg(test)]
+mod integration_tests;
 
 #[cfg(test)]
 mod tests {

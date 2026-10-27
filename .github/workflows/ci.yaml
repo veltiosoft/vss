@@ -36,7 +36,7 @@ jobs:
       - run: rustup update stable
       - run: cargo test --locked --test new_command --test config_paths --test install_scripts
       - run: cargo test --locked --lib subcommand_build::tests
-      - name: Test signed update archives and CLI (no real self replacement)
+      - name: Test signed updates and isolated subprocess self replacement
         run: |
           cargo test --locked --lib subcommand_self::update
           cargo test --locked --test self_update_cli

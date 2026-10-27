@@ -218,3 +218,62 @@ fn version_step_rejects_malicious_tags_and_accepts_release_tags() {
         }
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn release_tag_must_match_package_before_draft_creation_and_build_is_locked() {
+    use std::{fs, process::Command};
+    let workflow = workflow();
+    let steps = &workflow.jobs["github-release"].steps;
+    let check = steps
+        .iter()
+        .position(|step| step.name.as_deref() == Some("Verify tag matches Cargo package version"))
+        .unwrap();
+    let create = steps
+        .iter()
+        .position(|step| step.name.as_deref() == Some("Create draft release"))
+        .unwrap();
+    assert!(check < create);
+    for (tag, package, accepted) in [
+        ("v2026.10.0", "2026.10.0", true),
+        ("2026.10.0", "2026.10.0", true),
+        ("v2026.10.0-rc.1+build.2", "2026.10.0-rc.1+build.2", true),
+        ("v2026.10.1", "2026.10.0", false),
+        ("vv2026.10.0", "2026.10.0", false),
+        ("v2026.10.0+build.2", "2026.10.0+build.1", false),
+        ("v2026.10.0-rc.1", "2026.10.0", false),
+        ("v2026.10.0$(touch injected)", "2026.10.0", false),
+    ] {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(
+            directory.path().join("Cargo.toml"),
+            format!("[package]\nversion = \"{package}\"\n"),
+        )
+        .unwrap();
+        let output = Command::new("bash")
+            .args(["-e", "-c", steps[check].run.as_ref().unwrap()])
+            .current_dir(directory.path())
+            .env("VERSION", tag)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.success(),
+            accepted,
+            "{tag}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!directory.path().join("injected").exists());
+        if !accepted {
+            assert!(String::from_utf8_lossy(&output.stderr).contains("does not match"));
+        }
+    }
+    let build = workflow.jobs["build"]
+        .steps
+        .iter()
+        .find(|step| step.name.as_deref() == Some("Build"))
+        .unwrap()
+        .run
+        .as_ref()
+        .unwrap();
+    assert!(build.split_whitespace().any(|arg| arg == "--locked"));
+}

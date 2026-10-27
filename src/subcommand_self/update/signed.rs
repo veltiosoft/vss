@@ -17,7 +17,7 @@ pub(super) fn require_keys(keys: &[self_update::VerifyingKey]) -> Result<()> {
     Ok(())
 }
 
-fn checksum(sums: &[u8], name: &str) -> Result<String> {
+pub(super) fn checksum(sums: &[u8], name: &str) -> Result<String> {
     let text = std::str::from_utf8(sums).context("SHA-256 ファイルが UTF-8 ではありません")?;
     // Exactly one coreutils/shasum record, bound to the exact canonical asset.
     let line = text.strip_suffix('\n').unwrap_or(text);
@@ -162,5 +162,7 @@ fn extract(path: &Path, binary: &str, output: &mut File) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod edge_tests;
 #[cfg(test)]
 mod tests;

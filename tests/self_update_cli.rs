@@ -26,3 +26,13 @@ fn noninteractive_update_requires_explicit_yes_before_network_access() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("--yes"));
     assert!(!String::from_utf8_lossy(&output.stdout).contains("最新バージョンを確認"));
 }
+
+#[test]
+fn production_update_remains_disabled_pending_approved_trust_roots() {
+    // Deliberate rollout guard. Replace this assertion with approved-key rollout
+    // coverage when the administrator actually configures production keys.
+    let output = update(&["--yes"]);
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("本番署名公開鍵が未設定"));
+}
