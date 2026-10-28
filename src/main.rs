@@ -10,6 +10,8 @@ const SERVE_COMMAND: noargs::CmdSpec =
 const NEW_COMMAND: noargs::CmdSpec =
     noargs::cmd("new").doc("サイトのテンプレートプロジェクトを生成します");
 const SELF_COMMAND: noargs::CmdSpec = noargs::cmd("self").doc("セルフアップデート関連のコマンド");
+const SKILL_COMMAND: noargs::CmdSpec =
+    noargs::cmd("skill").doc("AI Agent 向けの SKILL を配置します");
 
 fn main() -> noargs::Result<()> {
     let mut args = noargs::raw_args();
@@ -33,6 +35,8 @@ fn main() -> noargs::Result<()> {
         vss::subcommand_new::run(args)?;
     } else if SELF_COMMAND.take(&mut args).is_present() {
         vss::subcommand_self::run(args)?;
+    } else if SKILL_COMMAND.take(&mut args).is_present() {
+        vss::subcommand_skill::run(args)?;
     } else if let Some(help) = args.finish()? {
         print!("{help}");
     }
