@@ -69,7 +69,8 @@ url_pattern = "/tags/{tag}/"
 Markdown はサイトルートから再帰的に探索され、`posts/hello.md` は `dist/posts/hello.html` になります。
 `build.ignore_files` はパスに含まれる文字列で除外します。glob パターンではありません。
 `.` 始まりのディレクトリ内の Markdown は探索しませんが、`.draft.md` のようなファイル名だけでは除外されません。
-公開したくない Markdown はサイト外に置くか、隠しディレクトリや除外設定を使ってください。
+公開したくない Markdown は `draft: true` を指定するか、サイト外、隠しディレクトリ、除外設定を使ってください。
+下書き指定は静的ファイルのコピーには適用しないため、非公開の原稿や添付ファイルを `static/` に置かないでください。
 入力のシンボリックリンクはビルド対象外です。
 
 `static/` の中身は出力先へコピーされます。
@@ -86,6 +87,8 @@ description: 記事の説明
 author: Author
 pub_datetime: "2026-10-28T09:00:00+09:00"
 post_slug: hello
+is_post: true
+draft: false
 og_image: /images/cover.png
 tags:
   - news
@@ -96,6 +99,11 @@ tags:
 
 front matter は省略できます。
 キーは `snake_case` を使います。
+`draft` と `is_post` は省略時に `false` で、引用符のない真偽値を指定します。
+文字列、数値、`null` はビルドエラーです。
+`draft: true` は個別ページ、記事一覧、タグ一覧、タグページの投稿から除外し、Markdown 部品にも適用します。
+`serve` 中に公開から下書きに変えると以前の生成物と一覧を更新します。
+下書きのプレビューオプションはありません。
 出力パスは Markdown のファイルパスで決まり、`post_slug` は出力先を変更しません。
 `og_image` は HTTP(S) の絶対 URL またはサイト内のパスを指定し、テンプレートでは解決済みの `og_image_url` を使います。
 front matter は 64 KiB、タグは 1 ファイル 128 個、1 個 256 UTF-8 バイトまでです。
@@ -120,6 +128,35 @@ front matter は 64 KiB、タグは 1 ファイル 128 個、1 個 256 UTF-8 バ
 `tags` は `name` と `url` を持つリスト、`has_tags` は表示可能なタグの有無です。
 タグページのテンプレートは既定で `layouts/tags/default.html` です。
 タグページでは `tag_name` と `posts` を参照し、各投稿の `title`、`description`、`author`、`pub_datetime`、`url`、`tags` を使えます。
+
+### 記事一覧とタグ一覧
+
+通常ページでは `posts` と `all_tags` を参照できます。
+`posts` は `is_post: true` の公開ページで、タグなし記事も含みます。
+固定ページや一覧ページは `is_post` を省略してください。
+各記事の値は `title`、`description`、`author`、`pub_datetime`、`url`、`tags`（タグ名の文字列リスト）です。
+`url` はサイトルートからのパーセントエンコード済みパスです。
+`pub_datetime` の降順で、RFC 3339 の日時と `YYYY-MM-DD`（UTC 午前 0 時）を比較します。
+日付欠落や不正な形式は末尾、同日時は URL 昇順です。
+移行元の `date` は自動変換しないため、`pub_datetime` へ移してください。
+
+`all_tags` は一覧対象の記事だけを集計した `name`、`url`、`count` のリストで、タグ名昇順です。
+同一記事の重複タグは 1 件と数え、安全でないタグ名は除外します。
+既存のタグページは互換性のため `is_post` に関係なくタグ付き公開ページを対象とし、その `posts` は通常ページとは対象が異なります。
+`build.tags.enable = false` でも一覧データは渡しますが、リンク先は自動生成しません。
+
+一覧は通常の Markdown ページと対応するテンプレートで作ります。
+たとえば `posts/index.md` と `layouts/posts/index.html` を用意します。
+新しい一覧用の出力先を自動生成する機能ではありません。
+
+```html
+<ul>{{#posts}}<li><a href="{{url}}">{{title}}</a> {{pub_datetime}}</li>{{/posts}}</ul>
+{{^posts}}<p>公開記事はありません。</p>{{/posts}}
+<ul>{{#all_tags}}<li><a href="{{url}}">{{name}}</a>（{{count}} 件）</li>{{/all_tags}}</ul>
+```
+
+一覧データの変更時はすべての通常ページを再描画し、本文だけの変更時は変更した記事を更新します。
+タグの URL パターンが一覧ページの出力先と重ならないようにしてください。
 
 再利用する Markdown はサイトルートの `partials/` に置きます。
 `partials/news.md` の変換済み HTML は `{{{partials.news}}}` で参照できます。

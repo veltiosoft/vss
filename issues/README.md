@@ -41,5 +41,7 @@
 
 ## 解決済み
 
+- [#63: front matter による下書きの公開除外を検討する](closed/0063-add-draft-exclusion.md)
+- [#64: 記事一覧とタグ一覧を生成する方法を検討する](closed/0064-add-post-index-and-tag-index.md)
 - [#11: fix (serve): ensure that fiels added later are also added to the monitaring target](closed/0011-bug-serve-watch-new-files.md)
 - [#37: dist を指定できるようにする](closed/0037-add-custom-dist.md)
