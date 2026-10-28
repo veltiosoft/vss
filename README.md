@@ -88,6 +88,35 @@ YAML front matter is limited to 64 KiB per file. Each file can have at most
 Markdown partials. Invalid front matter or exceeded limits cause a build error;
 the Markdown body is not subject to the front matter size limit.
 
+## Drafts and article indexes
+
+Set `draft: true` in Markdown front matter to exclude a page from HTML generation,
+tag pages, and indexes. It also hides Markdown partials. `vss serve` removes stale
+generated outputs when a published page becomes a draft. No draft-preview option
+is provided. Static files are copied independently; do not put private content in
+`static/`.
+
+Set `is_post: true` to include a published page in the `posts` list available to
+ordinary page templates. Both flags default to `false` and require YAML booleans;
+quoted strings, numbers, and `null` are errors. Tagless articles are included.
+`all_tags` provides the selected articles' tag names, URLs, and article counts.
+
+```html
+<ul>{{#posts}}<li><a href="{{url}}">{{title}}</a> {{pub_datetime}}</li>{{/posts}}</ul>
+<ul>{{#all_tags}}<li><a href="{{url}}">{{name}}</a> ({{count}})</li>{{/all_tags}}</ul>
+```
+
+Create ordinary Markdown pages and matching templates for these indexes, for
+example `posts/index.md` and `layouts/posts/index.html`. No additional output
+paths are generated automatically. Articles are sorted by `pub_datetime`
+(RFC 3339 or `YYYY-MM-DD`) descending, then URL ascending; missing or invalid
+dates sort last. Date-only values use UTC midnight. The `date` field used by
+other generators is not automatically mapped to `pub_datetime`.
+
+Existing tag pages retain tagged ordinary pages regardless of `is_post`, and use
+the same date ordering. See the [guide](https://vss.veltiosoft.dev/docs/posts.html)
+for template fields, tag counts, and rebuild behavior.
+
 ## Portable tag names
 
 Tags with filenames that are unsafe on Windows are excluded from rendered tag

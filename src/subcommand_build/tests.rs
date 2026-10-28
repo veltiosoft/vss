@@ -8,6 +8,8 @@ use tempfile::TempDir;
 
 static CWD: Mutex<()> = Mutex::new(());
 
+mod publication;
+
 #[test]
 fn site_relative_paths_accept_canonical_prefixes_and_missing_files() {
     let _site = Site::new();

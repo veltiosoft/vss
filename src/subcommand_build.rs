@@ -11,6 +11,9 @@ use std::{
     path::{Component, Path, PathBuf},
     time::Instant,
 };
+use time::{
+    Date, OffsetDateTime, format_description::well_known::Rfc3339, macros::format_description,
+};
 use walkdir::WalkDir;
 
 /// 変更されたファイルの種別
@@ -174,6 +177,10 @@ fn is_safe_tag_name(tag: &str) -> bool {
 /// YAML frontmatter の構造
 #[derive(Debug, Deserialize, Default)]
 struct FrontMatter {
+    #[serde(default, deserialize_with = "deserialize_boolean")]
+    draft: bool,
+    #[serde(default, deserialize_with = "deserialize_boolean")]
+    is_post: bool,
     #[serde(default)]
     title: String,
     #[serde(default)]
@@ -188,6 +195,25 @@ struct FrontMatter {
     og_image: String,
     #[serde(default, deserialize_with = "deserialize_tags")]
     tags: Option<Vec<String>>,
+}
+
+// YAML の文字列から bool への暗黙変換を避け、誤記を公開扱いにしない。
+fn deserialize_boolean<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
+    struct BooleanVisitor;
+
+    impl Visitor<'_> for BooleanVisitor {
+        type Value = bool;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a boolean (true or false)")
+        }
+
+        fn visit_bool<E: de::Error>(self, value: bool) -> Result<bool, E> {
+            Ok(value)
+        }
+    }
+
+    deserializer.deserialize_any(BooleanVisitor)
 }
 
 fn deserialize_tags<'de, D: Deserializer<'de>>(
@@ -258,6 +284,8 @@ struct RenderContext<'a> {
     og_image_url: String,
     has_tags: bool,
     tags: Vec<Tag>,
+    #[ramhorns(flatten)]
+    index: &'a PostIndex<'a>,
     // ramhorns はドットを含む名前をそのまま参照するため、partials.* を展開する。
     #[ramhorns(flatten)]
     partials: &'a HashMap<String, String>,
@@ -270,15 +298,59 @@ struct Tag {
     url: String,
 }
 
-/// タグページ生成用の投稿メタデータ
-#[derive(Content)]
+/// 公開ページのメタデータ。記事一覧は is_post で明示的に選別する。
+#[derive(Content, Debug, PartialEq, Eq)]
 struct PostMetadata {
+    is_post: bool,
     title: String,
     description: String,
     author: String,
     pub_datetime: String,
     url: String,
     tags: Option<Vec<String>>,
+}
+
+/// 通常ページに提供する記事一覧と、その記事だけから集計したタグ一覧。
+#[derive(Content)]
+struct PostIndex<'a> {
+    posts: Vec<&'a PostMetadata>,
+    all_tags: Vec<TagSummary>,
+}
+
+#[derive(Content)]
+struct TagSummary {
+    name: String,
+    url: String,
+    count: usize,
+}
+
+impl<'a> PostIndex<'a> {
+    fn new(posts: &'a [PostMetadata], config: &Config) -> Self {
+        let posts: Vec<_> = posts.iter().filter(|post| post.is_post).collect();
+        let mut counts = HashMap::new();
+        for post in &posts {
+            // 同じ記事で重複したタグは 1 件として数える。
+            let tags: HashSet<_> = post
+                .tags
+                .iter()
+                .flatten()
+                .filter(|tag| is_safe_tag_name(tag))
+                .collect();
+            for tag in tags {
+                *counts.entry(tag).or_insert(0) += 1;
+            }
+        }
+        let mut all_tags: Vec<_> = counts
+            .into_iter()
+            .map(|(name, count)| TagSummary {
+                name: name.clone(),
+                url: tag_url(config, name),
+                count,
+            })
+            .collect();
+        all_tags.sort_by(|a, b| a.name.cmp(&b.name));
+        Self { posts, all_tags }
+    }
 }
 
 /// タグページのレンダリングコンテキスト
@@ -542,8 +614,11 @@ fn load_markdown_partials(paths: &[PathBuf], config: &Config) -> Result<HashMap<
     for path in paths {
         let content = read_source_file(path)
             .with_context(|| format!("Failed to read markdown partial: {}", path.display()))?;
-        let (_, markdown_content) = parse_frontmatter(&content)
+        let (frontmatter, markdown_content) = parse_frontmatter(&content)
             .with_context(|| format!("Failed to parse markdown partial: {}", path.display()))?;
+        if frontmatter.draft {
+            continue;
+        }
         let html = markdown_to_html(
             &markdown_content,
             config.build.markdown.allow_dangerous_html,
@@ -717,24 +792,14 @@ pub fn run_build(config_path: &Path) -> Result<()> {
     // 7. テンプレートを読み込む
     let templates = load_templates(&config.layouts)?;
 
-    // 8. 投稿メタデータを収集
-    let mut all_posts: Vec<PostMetadata> = Vec::new();
-
-    // 9. 各 Markdown ファイルを処理
+    // 描画前に全公開ページを収集し、ページ間で同じ記事一覧を共有する。
+    let all_posts = collect_post_metadata(&md_files)?;
+    let index = PostIndex::new(&all_posts, &config);
     for md_path in md_files {
-        let post_metadata = process_markdown_file(&md_path, &config, &templates, &partials)?;
-        // タグページ生成が有効な場合のみメタデータを収集
-        if config.build.tags.enable
-            && let Some(metadata) = post_metadata
-        {
-            all_posts.push(metadata);
-        }
+        process_markdown_file(&md_path, &config, &templates, &partials, &index)?;
     }
 
-    // 10. タグページを生成
-    if !all_posts.is_empty() {
-        generate_tag_pages(all_posts, &config, &templates, &partials)?;
-    }
+    generate_tag_pages(&all_posts, &config, &templates, &partials)?;
 
     Ok(())
 }
@@ -745,7 +810,8 @@ fn process_markdown_file(
     config: &Config,
     templates: &HashMap<String, ramhorns::Template<'static>>,
     partials: &HashMap<String, String>,
-) -> Result<Option<PostMetadata>> {
+    index: &PostIndex<'_>,
+) -> Result<()> {
     // Markdown ファイルを読み込む
     let content = read_source_file(md_path)
         .with_context(|| format!("Failed to read markdown file: {}", md_path.display()))?;
@@ -753,6 +819,10 @@ fn process_markdown_file(
     // Frontmatter を解析
     let (frontmatter, markdown_content) = parse_frontmatter(&content)
         .with_context(|| format!("Failed to parse markdown file: {}", md_path.display()))?;
+
+    if frontmatter.draft {
+        return Ok(());
+    }
 
     // Markdown を HTML に変換
     let html_content = markdown_to_html(
@@ -801,6 +871,7 @@ fn process_markdown_file(
             .with_context(|| format!("Invalid og_image in {}", md_path.display()))?,
         has_tags,
         tags,
+        index,
         partials,
     };
 
@@ -822,24 +893,27 @@ fn process_markdown_file(
 
     println!("Generated: {}", output_path.display());
 
-    Ok(post_metadata(frontmatter, &html_path))
+    Ok(())
 }
 
 fn post_metadata(frontmatter: FrontMatter, html_path: &Path) -> Option<PostMetadata> {
-    let tags = frontmatter.tags.filter(|tags| !tags.is_empty())?;
+    if frontmatter.draft {
+        return None;
+    }
     Some(PostMetadata {
+        is_post: frontmatter.is_post,
         title: frontmatter.title,
         description: frontmatter.description,
         author: frontmatter.author,
         pub_datetime: frontmatter.pub_datetime,
-        url: format!("/{}", html_path.to_string_lossy()),
-        tags: Some(tags),
+        url: encoded_site_path(&template_path_key(html_path)),
+        tags: frontmatter.tags,
     })
 }
 
 /// タグページを生成する（設定を考慮）
 fn generate_tag_pages(
-    all_posts: Vec<PostMetadata>,
+    all_posts: &[PostMetadata],
     config: &Config,
     templates: &HashMap<String, ramhorns::Template<'static>>,
     partials: &HashMap<String, String>,
@@ -853,9 +927,9 @@ fn generate_tag_pages(
     // タグごとに投稿をグループ化
     let mut tag_to_posts: HashMap<&str, Vec<&PostMetadata>> = HashMap::new();
 
-    for post in &all_posts {
+    for post in all_posts {
         if let Some(tags_vec) = &post.tags {
-            for tag_name in tags_vec {
+            for tag_name in tags_vec.iter().collect::<HashSet<_>>() {
                 if !is_safe_tag_name(tag_name) {
                     continue;
                 }
@@ -1062,6 +1136,18 @@ fn find_markdown_sources(config: &Config) -> Result<(Vec<PathBuf>, Vec<PathBuf>)
         .partition(|path| path.starts_with(PARTIALS_DIR)))
 }
 
+/// 日付のみは UTC 0 時とし、不正・未指定の日付は一覧の末尾に置く。
+fn publication_datetime(value: &str) -> Option<i128> {
+    OffsetDateTime::parse(value, &Rfc3339)
+        .ok()
+        .or_else(|| {
+            Date::parse(value, format_description!("[year]-[month]-[day]"))
+                .ok()
+                .map(|date| date.midnight().assume_utc())
+        })
+        .map(|date| date.unix_timestamp_nanos())
+}
+
 fn collect_post_metadata(paths: &[PathBuf]) -> Result<Vec<PostMetadata>> {
     let mut posts = Vec::new();
     for path in paths {
@@ -1070,14 +1156,18 @@ fn collect_post_metadata(paths: &[PathBuf]) -> Result<Vec<PostMetadata>> {
         let (frontmatter, _) = parse_frontmatter(&content)
             .with_context(|| format!("Failed to parse markdown file: {}", path.display()))?;
         if let Some(post) = post_metadata(frontmatter, &path.with_extension("html")) {
-            posts.push(post);
+            posts.push((publication_datetime(&post.pub_datetime), post));
         }
     }
-    Ok(posts)
+    posts.sort_by(|(a_date, a), (b_date, b)| b_date.cmp(a_date).then_with(|| a.url.cmp(&b.url)));
+    Ok(posts.into_iter().map(|(_, post)| post).collect())
 }
 
 fn tag_url(config: &Config, tag: &str) -> String {
-    let path = config.build.tags.url_pattern.replace("{tag}", tag);
+    encoded_site_path(&config.build.tags.url_pattern.replace("{tag}", tag))
+}
+
+fn encoded_site_path(path: &str) -> String {
     let encoded = path
         .trim_start_matches('/')
         .split('/')
@@ -1155,6 +1245,7 @@ pub(crate) struct IncrementalBuilder {
     config_path: PathBuf,
     pub(crate) config: Config,
     tag_outputs: HashSet<PathBuf>,
+    posts: Vec<PostMetadata>,
     needs_full_build: bool,
     inputs: HashSet<PathBuf>,
 }
@@ -1170,6 +1261,7 @@ impl IncrementalBuilder {
             config_path: config_path.to_path_buf(),
             config,
             tag_outputs,
+            posts,
             needs_full_build: false,
             inputs,
         })
@@ -1334,15 +1426,32 @@ impl IncrementalBuilder {
 
         let posts = collect_post_metadata(&pages)?;
         let tag_outputs = tag_output_paths(&config, &posts);
+        // 公開から下書きへ変わったページも、静的ファイルとの重複を含め全体を再生成する。
+        let published_urls: HashSet<_> = posts.iter().map(|post| &post.url).collect();
+        full_build |= self
+            .posts
+            .iter()
+            .any(|post| !published_urls.contains(&post.url));
         // 最後の投稿が消えたタグは、任意の URL パターンでも残さない。
         full_build |= !self.tag_outputs.is_subset(&tag_outputs);
+        let listing_changed = self
+            .posts
+            .iter()
+            .filter(|post| post.is_post)
+            .ne(posts.iter().filter(|post| post.is_post));
         if full_build {
             println!("[INFO] Running full rebuild...");
             run_build(&self.config_path)?;
         } else {
             let templates = load_templates(&config.layouts)?;
             let partials = load_markdown_partials(&partial_files, &config)?;
-            let mut affected_pages = HashSet::new();
+            let index = PostIndex::new(&posts, &config);
+            // 全ページが一覧を参照できるため、一覧メタデータ変更時は全ページを更新する。
+            let mut affected_pages: HashSet<_> = if listing_changed {
+                pages.iter().cloned().collect()
+            } else {
+                HashSet::new()
+            };
             for changed in changed_files {
                 match changed {
                     ChangedFile::Markdown(path) => {
@@ -1381,14 +1490,13 @@ impl IncrementalBuilder {
                 }
             }
             for page in affected_pages {
-                process_markdown_file(&page, &config, &templates, &partials)?;
+                process_markdown_file(&page, &config, &templates, &partials, &index)?;
             }
-            if !posts.is_empty() {
-                generate_tag_pages(posts, &config, &templates, &partials)?;
-            }
+            generate_tag_pages(&posts, &config, &templates, &partials)?;
         }
         self.config = config;
         self.tag_outputs = tag_outputs;
+        self.posts = posts;
         self.inputs = inputs;
         Ok(())
     }
