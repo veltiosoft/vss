@@ -3,6 +3,7 @@ bin
 goxz
 dist
 vss
+!/skills/vss/
 
 # draw.io
 *.drawio.bkp

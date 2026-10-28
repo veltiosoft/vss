@@ -24,14 +24,13 @@ const SKELETON_FILES: &[(&str, &str)] = &[
         "static/style.css",
         include_str!("skeleton/static/style.css"),
     ),
-    (".gitignore", include_str!("skeleton/.gitignore")),
     ("README.md", include_str!("skeleton/README.md")),
 ];
 
 /// サイトの雛形を生成するコマンド。
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
     let directory: PathBuf = noargs::arg("<DIR>")
-        .doc("生成先。存在しないか空のディレクトリのみ指定できます。既存ファイルは上書きしません")
+        .doc("生成先。既存ディレクトリも指定できます。雛形と衝突する場合はエラーになり、既存ファイルは上書きしません")
         .example("my-site")
         .take(&mut args)
         .then(|arg| arg.value().parse())?;
@@ -48,12 +47,41 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
 
 fn generate_site(directory: &Path) -> Result<()> {
     let destination = open_destination(directory)?;
-    anyhow::ensure!(
-        destination.entries()?.next().transpose()?.is_none(),
-        "Destination directory is not empty: {}. Use an empty directory; existing files will not be overwritten.",
-        directory.display()
-    );
+    validate_skeleton_destination(&destination)?;
     write_skeleton(&destination)
+}
+
+/// ファイルやディレクトリを生成する前に、雛形の配置先をすべて検査する。
+fn validate_skeleton_destination(destination: &Dir) -> Result<()> {
+    for (name, _) in SKELETON_FILES {
+        let mut parent = destination.try_clone()?;
+        let mut components = Path::new(name).iter().peekable();
+        while let Some(component) = components.next() {
+            let path = Path::new(component);
+            let metadata = match parent.symlink_metadata(path) {
+                Ok(metadata) => metadata,
+                // 親が未作成なら、その配下も衝突しない。
+                Err(error) if error.kind() == ErrorKind::NotFound => break,
+                Err(error) => {
+                    return Err(error)
+                        .with_context(|| format!("Failed to inspect destination: {name}"));
+                }
+            };
+            anyhow::ensure!(
+                !metadata.file_type().is_symlink(),
+                "Destination contains a symbolic link: {name}"
+            );
+            anyhow::ensure!(
+                components.peek().is_some(),
+                "Destination already exists: {name}. Existing files will not be overwritten."
+            );
+            anyhow::ensure!(metadata.is_dir(), "Destination is not a directory: {name}");
+            parent = parent
+                .open_dir_nofollow(path)
+                .with_context(|| format!("Failed to open destination directory: {name}"))?;
+        }
+    }
+    Ok(())
 }
 
 /// 一要素ずつ nofollow で開き、以降の操作を保持したハンドルから行う。

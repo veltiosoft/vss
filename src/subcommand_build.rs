@@ -625,6 +625,9 @@ fn create_dist_dir(dist_path: &str) -> Result<()> {
     }
     fs::create_dir_all(path)
         .with_context(|| format!("Failed to create dist directory: {}", dist_path))?;
+    // サイトルートの .gitignore は変更せず、出力先自身で生成物を除外する。
+    fs::write(path.join(".gitignore"), "*\n")
+        .with_context(|| format!("Failed to write dist .gitignore: {}", dist_path))?;
     Ok(())
 }
 
@@ -889,6 +892,13 @@ fn generate_tag_pages(
         let rendered = template.render(&context);
 
         let output_path = tag_output_path(config, tag_name);
+        // Git の除外ルールをタグページで上書きしたり、その配下を作成したりしない。
+        anyhow::ensure!(
+            !paths_overlap(&output_path, &Path::new(&config.dist).join(".gitignore"))
+                .context("Failed to check tag output against the generated .gitignore")?,
+            "Tag output must not overlap the generated .gitignore: {}",
+            output_path.display()
+        );
 
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)

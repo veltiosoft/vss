@@ -415,6 +415,89 @@ fn matches_full_build(dist: &str) {
 }
 
 #[test]
+fn regenerates_gitignore_in_each_configured_output_without_changing_the_site_gitignore() {
+    let _site = Site::new();
+    write(".gitignore", "# User rules\r\n/private\r\n");
+    write("static/.gitignore", "NOT THE OUTPUT RULE\n");
+    for dist in ["dist", "public", "output/public"] {
+        write("vss.toml", &format!("dist = '{dist}'"));
+        for _ in 0..2 {
+            write(&format!("{dist}/.gitignore"), "stale rule\n");
+            run_build(Path::new("vss.toml")).unwrap();
+            assert_eq!(read(&format!("{dist}/.gitignore")), "*\n");
+            assert!(Path::new(&format!("{dist}/index.html")).is_file());
+            assert_eq!(read(".gitignore"), "# User rules\r\n/private\r\n");
+        }
+    }
+}
+
+#[test]
+fn tag_outputs_cannot_overwrite_or_traverse_the_managed_gitignore() {
+    let _site = Site::new();
+    for (pattern, tag) in [
+        ("/{tag}", ".gitignore"),
+        ("/{tag}", ".GITIGNORE"),
+        ("/.gitignore/{tag}/", "news"),
+    ] {
+        write(
+            "vss.toml",
+            &format!("[build.tags]\nurl_pattern = '{pattern}'"),
+        );
+        write("index.md", &format!("---\ntags: ['{tag}']\n---\nHome"));
+        let error = run_build(Path::new("vss.toml")).unwrap_err();
+        assert!(
+            error.to_string().contains("generated .gitignore"),
+            "{error:#}"
+        );
+        assert_eq!(read("dist/.gitignore"), "*\n");
+    }
+}
+
+#[test]
+fn incremental_tag_outputs_cannot_overwrite_the_managed_gitignore() {
+    let site = Site::new();
+    write("vss.toml", "[build.tags]\nurl_pattern = '/{tag}'");
+    run_build(Path::new("vss.toml")).unwrap();
+    let mut builder = site.builder();
+    write("index.md", "---\ntags: [news, '.gitignore']\n---\nChanged");
+    let error = builder
+        .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("generated .gitignore"),
+        "{error:#}"
+    );
+    assert_eq!(read("dist/.gitignore"), "*\n");
+    write("index.md", "---\ntags: [news]\n---\nRecovered");
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+        .unwrap();
+    assert_eq!(read("dist/.gitignore"), "*\n");
+    matches_full_build("dist");
+}
+
+#[test]
+fn incremental_builds_preserve_the_output_gitignore() {
+    let site = Site::new();
+    let mut builder = site.builder();
+    assert_eq!(read("dist/.gitignore"), "*\n");
+    write("index.md", "# Updated");
+    builder
+        .rebuild(&[ChangedFile::Markdown(site.path("index.md"))])
+        .unwrap();
+    assert_eq!(read("dist/.gitignore"), "*\n");
+    write("static/style.css", "updated");
+    builder
+        .rebuild(&[ChangedFile::Static(site.path("static/style.css"))])
+        .unwrap();
+    assert_eq!(read("dist/.gitignore"), "*\n");
+    write("vss.toml", "dist = 'output/public'");
+    builder.rebuild(&[ChangedFile::Config]).unwrap();
+    assert_eq!(read("output/public/.gitignore"), "*\n");
+    assert!(!Path::new(".gitignore").exists());
+}
+
+#[test]
 fn excludes_dot_directories_from_markdown_pages_partials_and_tags() {
     let _site = Site::new();
     for path in [

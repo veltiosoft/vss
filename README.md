@@ -22,13 +22,45 @@ vss build
 vss serve
 ```
 
-You can also run `vss new .` in an empty directory. The destination must be
-nonexistent or completely empty, including hidden files and directories.
-Existing files are never overwritten; there is no `--force` option.
+You can also run `vss new .` in an existing directory, including a Git
+repository. Unrelated files (including hidden files and `.git/`) are preserved,
+and existing directories are reused. Conflicts with skeleton paths are checked
+before any skeleton files or directories are created. Existing files are never
+overwritten; there is no `--force` option. Symbolic links in the destination path
+or skeleton paths are rejected; unrelated links are left untouched.
 Generated text files use UTF-8 and LF line endings on every OS.
 
 Set `base_url` in `vss.toml` to your public URL, then publish the contents of
 `dist/`. The development server rebuilds on changes; reload the browser manually.
+
+`vss new` does not create or modify a site-root `.gitignore`. Instead, both
+`vss build` and `vss serve` generate a `.gitignore` containing `*` and a final
+newline inside the configured output directory (`dist` in `vss.toml`). It ignores
+all contents, including itself, and is recreated with the output directory on
+each full build. Already tracked files remain tracked; use `git rm --cached`
+if you need to remove them from Git's index.
+
+## Install an AI Agent skill
+
+```sh
+vss skill install --dir ./path/to/skills
+```
+
+`--dir` is required and names the **parent directory**: the bundled skill is
+installed at `./path/to/skills/vss/SKILL.md`. Missing parent directories are
+created. Relative paths are resolved from the current working directory;
+absolute paths and quoted paths containing spaces are also supported.
+
+An existing `vss` entry (even an empty directory, file, or symbolic link) causes
+an error; nothing is overwritten. Other skills in the parent directory are left
+unchanged. Success prints the absolute path of the installed file. Failures
+report the cause and return a nonzero exit status; newly created directories or
+partial files may remain after an I/O failure.
+
+This command works outside a site without `vss.toml`. It does not select an
+Agent-specific destination, edit Agent configuration, or download external
+skills. See `vss skill install --help` and the
+[installation guide](https://vss.veltiosoft.dev/docs/skill.html).
 
 ## Input files
 

@@ -21,6 +21,9 @@
 
 ## P2: 計画対応
 
+- [#61: feat: AI Agent 向けの SKILL を指定ディレクトリへインストールする CLI を追加する](0061-add-agent-skill-install.md)
+  - 実装済み。利用者が親ディレクトリを指定し、同梱 SKILL を `vss/SKILL.md` に配置する。
+
 - [#20: docs: 現在の Rust 版の利用方法をドキュメントにまとめる](0020-doc-rust-usage.md)
 - [#33: 使用中の vss version を vss.toml で設定できるようにする](0033-add-project-vss-version.md)
 - [#50: dev server でファイル監視による Web ページの自動リロード機能を追加する](0050-add-serve-live-reload.md)

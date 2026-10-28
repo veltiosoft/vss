@@ -11,6 +11,7 @@ emoji: "📚"
 wip
 
 - [サイトの雛形を作成する](new.html)
+- [AI Agent 向けの SKILL をインストールする](skill.html)
 
 ## Frontmatter
 
