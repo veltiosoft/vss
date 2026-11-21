@@ -4,7 +4,7 @@ Veltiosoft Static Site Generator.
 
 ## Documentation
 
-Read: https://vss.veltiosoft.dev/
+Read: https://veltiosoft.github.io/vss/
 
 ## Versioning
 
@@ -59,8 +59,7 @@ partial files may remain after an I/O failure.
 
 This command works outside a site without `vss.toml`. It does not select an
 Agent-specific destination, edit Agent configuration, or download external
-skills. See `vss skill install --help` and the
-[installation guide](https://vss.veltiosoft.dev/docs/skill.html).
+skills. See `vss skill install --help` for command-line usage.
 
 ## Input files
 
@@ -98,7 +97,8 @@ is provided. Static files are copied independently; do not put private content i
 
 Set `is_post: true` to include a published page in the `posts` list available to
 ordinary page templates. Both flags default to `false` and require YAML booleans;
-quoted strings, numbers, and `null` are errors. Tagless articles are included.
+quoted strings, numbers, and `null` are errors. Tagless articles are included. Each `posts` entry provides `title`,
+`description`, `author`, `pub_datetime`, `url`, and `tags`.
 `all_tags` provides the selected articles' tag names, URLs, and article counts.
 
 ```html
@@ -114,8 +114,8 @@ dates sort last. Date-only values use UTC midnight. The `date` field used by
 other generators is not automatically mapped to `pub_datetime`.
 
 Existing tag pages retain tagged ordinary pages regardless of `is_post`, and use
-the same date ordering. See the [guide](https://vss.veltiosoft.dev/docs/posts.html)
-for template fields, tag counts, and rebuild behavior.
+the same date ordering. Changes to article metadata update the rendered indexes
+when `vss serve` rebuilds the site.
 
 ## Portable tag names
 

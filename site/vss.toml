@@ -1,15 +1,3 @@
-site_title = "vss docs"
-site_description = "vss document site"
-# 相対パスで指定した og_image はこの URL を基準に解決する
-base_url = "https://vss.veltiosoft.dev"
-
-[build]
-ignore_files = ["README.md"]
-
-[build.markdown]
-allow_dangerous_html = false
-
-[build.tags]
-enable = true
-template = "tags/default.html"
-url_pattern = "/tags/{tag}/"
+site_title = "vss"
+site_description = "Markdown から静的な Web サイトを作るツール"
+base_url = "https://veltiosoft.github.io/vss/"

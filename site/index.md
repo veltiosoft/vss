@@ -1,54 +1,34 @@
-# vss documentation
+# vss
 
-A static site generator.
+vss は、Markdown から静的な Web サイトを作るツールです。
+本文は Markdown で書き、HTML と CSS で見た目を整えます。
 
-![vss-logo](./image.gif)
+## インストール
 
-- [GitHub](https://github.com/veltiosoft/vss)
+[GitHub Releases](https://github.com/veltiosoft/vss/releases/latest) から OS と CPU に合うファイルをダウンロードします。
+展開した `vss`（Windows は `vss.exe`）を PATH が通った場所に置き、`vss --version` で確認します。
 
-## Features
+## サイトを作る
 
-- Write content in Markdown
-  - GFM (GitHub Flavored Markdown) is supported
-- Render HTML with [Mustache](https://github.com/cbroglie/mustache)
-- Local development server (Rebuilds when files are modified)
-    - But now, page reloading must be done manually
-
-## Installation
-
-For Mac & Linux
-
-latest version
 ```sh
-curl -sfL https://raw.githubusercontent.com/veltiosoft/vss/main/scripts/install.sh | sh
+vss new my-site
+cd my-site
+vss serve
 ```
 
-specific version
+[http://localhost:8080](http://localhost:8080) でサイトを確認します。
+`index.md` を編集し、ブラウザーを再読み込みすると変更を確認できます。
+
+## 公開する
+
+開発サーバーを止め、`vss.toml` の `base_url` に公開先の URL を設定します。
+
 ```sh
-curl -sfL https://raw.githubusercontent.com/veltiosoft/vss/main/scripts/install.sh | sh -s v2026.10.0
+vss build
 ```
 
-For Windows (with PowerShell)
-```powershell
-irm https://raw.githubusercontent.com/veltiosoft/vss/main/scripts/install.ps1 | iex
-```
+生成された `dist/` の中身を静的ホスティングに公開します。
 
-specific version
-```powershell
-$v="v2026.10.0"; irm https://raw.githubusercontent.com/veltiosoft/vss/main/scripts/install.ps1 | iex
-```
+## 詳しい使い方
 
-## Contents
-
-- [about page](./about)
-- post
-  - [first](./post/first)
-
-## Browse by Tag
-
-Explore posts organized by topic:
-
-- [release](/tags/release/) - Release announcements and updates
-- [features](/tags/features/) - New features and improvements
-- [major](/tags/major/) - Major releases and changes
-- [meta](/tags/meta/) - Meta posts and discussions
+設定と機能の詳細は [GitHub の README](https://github.com/veltiosoft/vss#readme) を参照してください。
