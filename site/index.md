@@ -29,6 +29,11 @@ vss build
 
 生成された `dist/` の中身を静的ホスティングに公開します。
 
+## vss で作られたサイト
+
+- [Pistachio Studio](https://pistachiostudio.net/)
+- [quojama.com](https://quojama.com/)
+
 ## 詳しい使い方
 
 設定と機能の詳細は [GitHub の README](https://github.com/veltiosoft/vss#readme) を参照してください。
