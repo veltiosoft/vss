@@ -11,4 +11,9 @@ description: vss でやりたいことから、使い方を探せます。
 
 - [SNS 共有用の OGP 画像と説明を設定する](./cookbook-social-preview.html)
 
+## 共通コンテンツ
+
+- [全ページに共通のフッターを表示する](./cookbook-shared-footer.html)
+- [お知らせがあるときだけバナーを表示する](./cookbook-notice-banner.html)
+
 [vss のトップページ](./index.html)
