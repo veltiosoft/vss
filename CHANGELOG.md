@@ -35,6 +35,8 @@
   - 共通フッターと、お知らせがあるときだけ表示するバナーの作り方を掲載する。
 - [FIX] 公式サイトでファビコンの取得が 404 になる問題を修正する
 - [FIX] OGP 画像の回帰テストが削除済みのテンプレートを参照してコンパイルできない問題を修正する
+- [FIX] 依存関係 `quinn-udp` と `rustix` を RustSec の指摘に対応したバージョンへ更新する
+  - `quinn-udp` を `0.5.16`（[RUSTSEC-2026-0538](https://rustsec.org/advisories/RUSTSEC-2026-0538.html)）、`rustix` を `1.1.6`（[RUSTSEC-2026-0486](https://rustsec.org/advisories/RUSTSEC-2026-0486.html)）に更新する。
 
 ## v2026.10.1
 
