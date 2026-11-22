@@ -2690,6 +2690,7 @@ dependencies = [
  "axum",
  "cap-fs-ext",
  "cap-std",
+ "futures-util",
  "glob",
  "gray_matter",
  "markdown",

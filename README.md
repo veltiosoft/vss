@@ -37,7 +37,12 @@ or skeleton paths are rejected; unrelated links are left untouched.
 Generated text files use UTF-8 and LF line endings on every OS.
 
 Set `base_url` in `vss.toml` to your public URL, then publish the contents of
-`dist/`. The development server rebuilds on changes; reload the browser manually.
+`dist/`. The development server reloads pages open in the browser after each
+successful rebuild. The live-reload script is served only by `vss serve`; it is
+not written to `dist/`. If your Content Security Policy restricts scripts or
+connections, it must allow both from the preview page's own origin for live
+reload to work. When you stop `vss serve` with `Ctrl+C`, connected pages stop
+retrying. After restarting the server, reload the preview page to reconnect.
 
 `vss new` does not create or modify a site-root `.gitignore`. Instead, both
 `vss build` and `vss serve` generate a `.gitignore` containing `*` and a final
