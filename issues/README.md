@@ -39,6 +39,15 @@
 
 - [タグページの投稿を pub_datetime でソートする](tag-page-sort-by-pub-datetime.md)
 
+## ローカル起票: 既存サイトからの移行
+
+- [#62: 既存サイトのパーマリンクを維持できる出力方式を検討する](0062-add-pretty-urls.md)
+- [#65: 公開記事から Atom フィードを生成する方法を検討する](0065-add-atom-feed.md)
+- [#66: JavaScript アプリを含むサイトの移行方法を整理する](0066-doc-javascript-asset-migration.md)
+- [#67: 生 HTML を含む Markdown の安全な移行方法を整理する](0067-doc-safe-html-migration.md)
+- [#68: Markdown の探索範囲を明示的に限定する方法を検討する](0068-add-content-root.md)
+- [#69: 既存サイトからの移行と出力検証の手順を整備する](0069-doc-migration-validation.md)
+
 ## 解決済み
 
 - [#63: front matter による下書きの公開除外を検討する](closed/0063-add-draft-exclusion.md)
