@@ -1,6 +1,6 @@
 use std::{fs, path::Path, process::Command};
 
-const POST_TEMPLATE: &str = include_str!("../site/layouts/posts/default.html");
+const POST_TEMPLATE: &str = include_str!("../example_site/layouts/posts/default.html");
 
 fn write(site: &Path, path: &str, contents: &str) {
     let path = site.join(path);
@@ -80,7 +80,7 @@ fn renders_explicit_og_images_with_url_resolution_and_html_escaping() {
         let html = fs::read_to_string(site.join("dist/posts/post.html")).unwrap();
         assert!(
             html.contains(&format!(
-                "<meta property=\"og:image\" content=\"{expected}\" />"
+                "<meta property=\"og:image\" content=\"{expected}\">"
             )),
             "image: {image}; html: {html}"
         );

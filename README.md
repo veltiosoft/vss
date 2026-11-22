@@ -4,7 +4,13 @@ Veltiosoft Static Site Generator.
 
 ## Documentation
 
-Read: https://veltiosoft.github.io/vss/
+- [Getting started](https://veltiosoft.github.io/vss/)
+- [Cookbook](https://veltiosoft.github.io/vss/cookbook.html)
+
+To add a recipe, create `site/cookbook-<topic>.md`, set `title` and `description`
+in its front matter, and link to the generated `.html` page from the relevant
+category in `site/cookbook.md`. Use one task per page, show what to change in each
+file, and include a way to verify the result.
 
 ## Versioning
 

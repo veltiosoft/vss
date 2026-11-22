@@ -29,6 +29,10 @@ vss build
 
 生成された `dist/` の中身を静的ホスティングに公開します。
 
+## クックブック
+
+[やりたいことから設定例を探す](./cookbook.html)
+
 ## vss で作られたサイト
 
 - [Pistachio Studio](https://pistachiostudio.net/)

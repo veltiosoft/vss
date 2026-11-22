@@ -16,8 +16,9 @@
             // Follow the system when storage is unavailable.
         }
     </script>
-    <meta name="description" content="{{site_description}}">
-    <title>{{site_title}}</title>
+    {{#description}}<meta name="description" content="{{description}}">{{/description}}
+    {{^description}}<meta name="description" content="{{site_description}}">{{/description}}
+    <title>{{#title}}{{title}} | {{/title}}{{site_title}}</title>
     <link rel="icon" type="image/svg+xml" sizes="any" href="./favicon.svg">
     <link rel="stylesheet" href="./styles/main.css">
     <script src="./js/color-scheme.js" defer></script>
