@@ -17,7 +17,7 @@
 状態: [#12](0012-bug-og-image-frontmatter.md) の仕様と、画像生成の要件整理待ち。
 確認対象: `main` の `663b819`（v0.21.0）。
 
-旧 Go 版の `go/builder.go` と `go/frontmatter.go` には、絵文字を PNG に変換して `og_image` に設定する実装がある。
+旧 Go 版の [`go/builder.go`](https://github.com/veltiosoft/vss/blob/42c022dab4f996f6222c817afe55909ece309f5d/go/builder.go) と [`go/frontmatter.go`](https://github.com/veltiosoft/vss/blob/42c022dab4f996f6222c817afe55909ece309f5d/go/frontmatter.go) には、絵文字を PNG に変換して `og_image` に設定する実装がある。
 一方、現在の Rust 版には `og_image` の受け渡しも画像生成もないため、旧 Go 版の PNG 対応だけを根拠にクローズしない。
 
 ## 作業の切り分け
