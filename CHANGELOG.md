@@ -18,6 +18,7 @@
 
 - [CHANGE] リポジトリから旧 Go 版の `go/` ディレクトリを削除する
   - 現行のソースからは Rust 版を利用する。旧 Go 版のソースは削除前の Git 履歴で参照できる。
+- [UPDATE] GitHub Pages のデプロイに使う Action を Node.js 24 対応版に更新する
 
 ## v2026.11.0
 
