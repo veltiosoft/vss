@@ -11,6 +11,9 @@
 
 ## main
 
+- [FIX] 依存関係 `url` を `2.5.9` に更新する
+  - `Url::origin()` のスタックオーバーフローに関する [RUSTSEC-2026-0592](https://rustsec.org/advisories/RUSTSEC-2026-0592) に対応する。
+
 ### misc
 
 - [CHANGE] リポジトリから旧 Go 版の `go/` ディレクトリを削除する
