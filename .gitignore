@@ -5,6 +5,9 @@ dist
 vss
 !/skills/vss/
 
+# Local planning files
+/plans/
+
 # draw.io
 *.drawio.bkp
 *.drawio.dtmp
