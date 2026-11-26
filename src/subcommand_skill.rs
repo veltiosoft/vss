@@ -11,18 +11,16 @@ use std::{
 };
 
 const INSTALL_COMMAND: noargs::CmdSpec =
-    noargs::cmd("install").doc("同梱 SKILL を配置します (例: vss skill install --dir ./skills)");
+    noargs::cmd("install").doc("指定した親ディレクトリに同梱スキルを配置します");
 const SKILL: &str = include_str!("../skills/vss/SKILL.md");
 
 /// Agent 固有の保存先は選択せず、明示された親ディレクトリへ配置する。
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
     if INSTALL_COMMAND.take(&mut args).is_present() {
         run_install(args)
-    } else if let Some(help) = args.finish()? {
-        print!("{help}");
-        Ok(())
     } else {
-        Err("使用方法: vss skill install --dir <DIR>".into())
+        crate::cli::finish(args, "skill")?;
+        Ok(())
     }
 }
 
@@ -39,8 +37,7 @@ fn run_install(mut args: noargs::RawArgs) -> noargs::Result<()> {
                 Ok(PathBuf::from(opt.value()))
             }
         })?;
-    if let Some(help) = args.finish()? {
-        print!("{help}");
+    if crate::cli::finish(args, "skill install")? {
         return Ok(());
     }
 

@@ -9,7 +9,11 @@ const BIN_NAME: &str = "vss.exe";
 #[cfg(not(windows))]
 const BIN_NAME: &str = "vss";
 
-pub fn run(_args: noargs::RawArgs) -> noargs::Result<()> {
+pub fn run(args: noargs::RawArgs) -> noargs::Result<()> {
+    if crate::cli::finish(args, "self update")? {
+        return Ok(());
+    }
+
     println!("最新バージョンを確認しています...");
 
     match update() {

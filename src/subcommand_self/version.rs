@@ -1,4 +1,8 @@
-pub fn run(_args: noargs::RawArgs) -> noargs::Result<()> {
+pub fn run(args: noargs::RawArgs) -> noargs::Result<()> {
+    if crate::cli::finish(args, "self version")? {
+        return Ok(());
+    }
+
     let version = env!("CARGO_PKG_VERSION");
 
     // ビルド時のコミットハッシュ（環境変数で指定される場合）

@@ -34,8 +34,7 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
         .example("my-site")
         .take(&mut args)
         .then(|arg| arg.value().parse())?;
-    if let Some(help) = args.finish()? {
-        print!("{help}");
+    if crate::cli::finish(args, "new")? {
         return Ok(());
     }
 

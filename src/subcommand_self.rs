@@ -1,8 +1,10 @@
 pub mod update;
 pub mod version;
 
-const UPDATE_COMMAND: noargs::CmdSpec = noargs::cmd("update").doc("最新バージョンに更新します");
-const VERSION_COMMAND: noargs::CmdSpec = noargs::cmd("version").doc("バージョン情報を表示します");
+const UPDATE_COMMAND: noargs::CmdSpec = noargs::cmd("update")
+    .doc("GitHub Releases の最新バージョンに更新します\n更新前に確認プロンプトは表示しません。");
+const VERSION_COMMAND: noargs::CmdSpec =
+    noargs::cmd("version").doc("バージョン番号、コミット、OS と CPU アーキテクチャを表示します");
 
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
     if UPDATE_COMMAND.take(&mut args).is_present() {
@@ -10,12 +12,7 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
     } else if VERSION_COMMAND.take(&mut args).is_present() {
         version::run(args)?;
     } else {
-        eprintln!("使用方法: vss self [update|version]");
-        eprintln!();
-        eprintln!("サブコマンド:");
-        eprintln!("  update   - {}", UPDATE_COMMAND.doc);
-        eprintln!("  version  - {}", VERSION_COMMAND.doc);
-        std::process::exit(1);
+        crate::cli::finish(args, "self")?;
     }
 
     Ok(())

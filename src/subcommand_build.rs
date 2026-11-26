@@ -743,23 +743,12 @@ fn copy_static_files(static_dir: &str, dist_dir: &str) -> Result<()> {
 
 /// ビルドコマンドのエントリポイント。
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
-    let config: Option<PathBuf> = noargs::opt("config")
-        .ty("PATH")
-        .example("/path/to/vss.toml")
-        .doc("設定ファイルパス")
+    let config_path: PathBuf = crate::cli::CONFIG_OPTION
         .take(&mut args)
-        .present_and_then(|a| a.value().parse())?;
-    if let Some(help) = args.finish()? {
-        print!("{help}");
+        .then(|a| a.value().parse())?;
+    if crate::cli::finish(args, "build")? {
         return Ok(());
     }
-
-    // config が指定されていない場合はデフォルトで
-    // 現在のディレクトリの vss.toml を利用する。
-    let config_path = match config {
-        Some(p) => p,
-        None => PathBuf::from("vss.toml"),
-    };
 
     // 処理時間を計測する
     let start = Instant::now();

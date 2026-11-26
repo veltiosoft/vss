@@ -46,33 +46,20 @@ fn run_build_with_timing(config_path: &Path) -> Result<Duration> {
 
 /// serve コマンドのエントリポイント
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
-    let config: Option<PathBuf> = noargs::opt("config")
-        .ty("PATH")
-        .example("/path/to/vss.toml")
-        .doc("設定ファイルパス")
+    let config_path: PathBuf = crate::cli::CONFIG_OPTION
         .take(&mut args)
-        .present_and_then(|a| a.value().parse())?;
+        .then(|a| a.value().parse())?;
 
-    let port: Option<u16> = noargs::opt("port")
+    let port: u16 = noargs::opt("port")
         .ty("PORT")
-        .example("3000")
-        .doc("ポート番号 (デフォルト: 8080)")
+        .default("8080")
+        .doc("開発サーバーの待ち受けポート（127.0.0.1 のみ）")
         .take(&mut args)
-        .present_and_then(|a| a.value().parse())?;
+        .then(|a| a.value().parse())?;
 
-    if let Some(help) = args.finish()? {
-        print!("{help}");
+    if crate::cli::finish(args, "serve")? {
         return Ok(());
     }
-
-    // config が指定されていない場合はデフォルトで
-    // 現在のディレクトリの vss.toml を利用する
-    let config_path = match config {
-        Some(p) => p,
-        None => PathBuf::from("vss.toml"),
-    };
-
-    let port = port.unwrap_or(8080);
 
     // サーバー実行
     if let Err(e) = run_serve(&config_path, port) {

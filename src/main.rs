@@ -1,27 +1,32 @@
 // 共通フラグ
-const HELP_FLAG: noargs::FlagSpec = noargs::HELP_FLAG
-    .doc("ヘルプメッセージを表示します ('--help' なら詳細、'-h' なら簡易版を表示)");
-const VERSION_FLAG: noargs::FlagSpec = noargs::VERSION_FLAG.doc("バージョン情報を表示します");
+const HELP_FLAG: noargs::FlagSpec =
+    noargs::HELP_FLAG.doc("ヘルプを表示します（--help は詳細、-h は概要）");
+const VERSION_FLAG: noargs::FlagSpec = noargs::VERSION_FLAG.doc("バージョン番号を表示します");
 
 // サブコマンド
-const BUILD_COMMAND: noargs::CmdSpec = noargs::cmd("build").doc("サイトをビルドします");
-const SERVE_COMMAND: noargs::CmdSpec =
-    noargs::cmd("serve").doc("ファイルの変更を検知して自動ビルドを行います");
-const NEW_COMMAND: noargs::CmdSpec =
-    noargs::cmd("new").doc("サイトのテンプレートプロジェクトを生成します");
-const SELF_COMMAND: noargs::CmdSpec = noargs::cmd("self").doc("セルフアップデート関連のコマンド");
+const BUILD_COMMAND: noargs::CmdSpec = noargs::cmd("build").doc(
+    "Markdown を HTML に変換し、静的ファイルとともに出力します\n出力先（既定: dist）はビルド時に削除して再生成します。",
+);
+const SERVE_COMMAND: noargs::CmdSpec = noargs::cmd("serve").doc(
+    "ローカル開発サーバーを起動します\nファイルの変更を検知して再ビルドし、成功するとブラウザーを自動で再読み込みします。\n既定のプレビュー URL は http://localhost:8080 です。",
+);
+const NEW_COMMAND: noargs::CmdSpec = noargs::cmd("new")
+    .doc("サイトの雛形を生成します\nカレントディレクトリに生成するには vss new . を使います。");
+const SELF_COMMAND: noargs::CmdSpec =
+    noargs::cmd("self").doc("vss 本体の更新やビルド情報の表示を行います");
 const SKILL_COMMAND: noargs::CmdSpec =
-    noargs::cmd("skill").doc("AI Agent 向けの SKILL を配置します");
+    noargs::cmd("skill").doc("AI エージェント向けの同梱スキルを配置します");
 
 fn main() -> noargs::Result<()> {
     let mut args = noargs::raw_args();
     args.metadata_mut().app_name = env!("CARGO_PKG_NAME");
-    args.metadata_mut().app_description = env!("CARGO_PKG_DESCRIPTION");
+    args.metadata_mut().app_description = "Markdown から静的サイトを生成します\n各コマンドの詳細は vss <COMMAND> --help で確認できます。";
 
     // 共通系のフラグ処理
-    HELP_FLAG.take_help(&mut args);
+    let help = HELP_FLAG.take_help(&mut args);
+    let version = VERSION_FLAG.take(&mut args);
 
-    if VERSION_FLAG.take(&mut args).is_present() {
+    if version.is_present() && !help.is_present() {
         println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
