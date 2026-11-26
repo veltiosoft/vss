@@ -4,6 +4,8 @@ use std::{
     process::{Command, Output},
 };
 
+const FORCE_INSTALL: &[&str] = &["skill", "install", "--dir", ".", "--force"];
+
 fn run(directory: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_vss"))
         .args(args)
@@ -128,7 +130,73 @@ fn refuses_reinstallation_without_modifying_the_existing_skill() {
     fs::write(&skill, "customized skill\r\n").unwrap();
     let output = run(directory.path(), &["skill", "install", "--dir", "."]);
     assert_failure(&output, "already exists");
+    assert_failure(&output, "--force");
     assert_eq!(fs::read_to_string(skill).unwrap(), "customized skill\r\n");
+}
+
+#[test]
+fn force_replaces_only_the_skill_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let skill_dir = directory.path().join("vss");
+    fs::create_dir(&skill_dir).unwrap();
+    let skill = skill_dir.join("SKILL.md");
+    fs::write(&skill, "customized skill\r\n").unwrap();
+    fs::write(skill_dir.join("notes.md"), "keep\r\n").unwrap();
+    fs::write(directory.path().join("other-skill.md"), "keep").unwrap();
+
+    assert_success(&run(directory.path(), FORCE_INSTALL));
+    assert_eq!(
+        fs::read_to_string(skill).unwrap(),
+        include_str!("../skills/vss/SKILL.md").replace("\r\n", "\n")
+    );
+    assert_eq!(fs::read_dir(&skill_dir).unwrap().count(), 2);
+    assert_eq!(
+        fs::read_to_string(skill_dir.join("notes.md")).unwrap(),
+        "keep\r\n"
+    );
+    assert_eq!(
+        fs::read_to_string(directory.path().join("other-skill.md")).unwrap(),
+        "keep"
+    );
+}
+
+#[test]
+fn force_installs_when_the_skill_file_does_not_exist() {
+    for existing_directory in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        if existing_directory {
+            fs::create_dir(directory.path().join("vss")).unwrap();
+        }
+        assert_skill(directory.path(), &run(directory.path(), FORCE_INSTALL));
+    }
+}
+
+#[test]
+fn force_does_not_change_other_hard_links_to_the_old_skill() {
+    let directory = tempfile::tempdir().unwrap();
+    let skill_dir = directory.path().join("vss");
+    fs::create_dir(&skill_dir).unwrap();
+    let outside = directory.path().join("shared.md");
+    fs::write(&outside, "keep").unwrap();
+    fs::hard_link(&outside, skill_dir.join("SKILL.md")).unwrap();
+
+    assert_skill(directory.path(), &run(directory.path(), FORCE_INSTALL));
+    assert_eq!(fs::read_to_string(outside).unwrap(), "keep");
+}
+
+#[test]
+fn force_does_not_replace_a_directory_at_the_skill_file_path() {
+    let directory = tempfile::tempdir().unwrap();
+    let skill = directory.path().join("vss/SKILL.md");
+    fs::create_dir_all(&skill).unwrap();
+    fs::write(skill.join("notes.md"), "keep").unwrap();
+
+    assert_failure(&run(directory.path(), FORCE_INSTALL), "not a regular file");
+    assert_eq!(fs::read_to_string(skill.join("notes.md")).unwrap(), "keep");
+    assert_eq!(
+        fs::read_dir(directory.path().join("vss")).unwrap().count(),
+        1
+    );
 }
 
 #[test]
@@ -149,6 +217,10 @@ fn refuses_a_file_in_place_of_the_skill_directory() {
     fs::write(directory.path().join("vss"), "keep").unwrap();
     let output = run(directory.path(), &["skill", "install", "--dir", "."]);
     assert_failure(&output, "already exists");
+    assert_failure(
+        &run(directory.path(), FORCE_INSTALL),
+        "Failed to open skill destination",
+    );
     assert_eq!(
         fs::read_to_string(directory.path().join("vss")).unwrap(),
         "keep"
@@ -183,7 +255,10 @@ fn rejects_missing_or_invalid_arguments_without_creating_files() {
         vec!["skill", "install", "--dir"],
         vec!["skill", "install", "--dir", ""],
         vec!["skill", "install", "--dir", "skills", "extra"],
-        vec!["skill", "install", "--dir", "skills", "--force"],
+        vec!["skill", "install", "--force"],
+        vec!["skill", "install", "--dir", "--force"],
+        vec!["skill", "install", "--dir", "skills", "--force=false"],
+        vec!["skill", "install", "--dir", "skills", "--force", "--force"],
         vec!["skill", "install", "--dir", "skills", "--unknown"],
         vec!["skill", "install", "--dir", "skills", "--dir", "other"],
     ] {
@@ -207,6 +282,11 @@ fn help_describes_the_commands_without_creating_files() {
         (vec!["skill", "-h"], "install"),
         (vec!["skill", "install", "--help"], "--dir"),
         (vec!["skill", "install", "-h"], "--dir"),
+        (vec!["skill", "install", "--help"], "--force"),
+        (
+            vec!["skill", "install", "--dir", "skills", "--force", "--help"],
+            "vss/SKILL.md",
+        ),
         (
             vec!["skill", "install", "--dir", "skills", "--help"],
             "vss/SKILL.md",
@@ -234,6 +314,10 @@ fn refuses_existing_symlinks_including_broken_links_without_touching_targets() {
         symlink(&target, directory.path().join("vss")).unwrap();
         let output = run(directory.path(), &["skill", "install", "--dir", "."]);
         assert_failure(&output, "already exists");
+        assert_failure(
+            &run(directory.path(), FORCE_INSTALL),
+            "Failed to open skill destination",
+        );
         assert!(
             fs::symlink_metadata(directory.path().join("vss"))
                 .unwrap()
@@ -241,6 +325,32 @@ fn refuses_existing_symlinks_including_broken_links_without_touching_targets() {
                 .is_symlink()
         );
         assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn force_does_not_replace_or_follow_a_symlink_at_the_skill_file_path() {
+    use std::os::unix::fs::symlink;
+    for broken in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let skill_dir = directory.path().join("vss");
+        fs::create_dir(&skill_dir).unwrap();
+        let outside = directory.path().join("target.md");
+        if !broken {
+            fs::write(&outside, "keep").unwrap();
+        }
+        let skill = skill_dir.join("SKILL.md");
+        symlink(&outside, &skill).unwrap();
+
+        assert_failure(&run(directory.path(), FORCE_INSTALL), "not a regular file");
+        assert_eq!(fs::read_link(&skill).unwrap(), outside);
+        assert_eq!(fs::read_dir(&skill_dir).unwrap().count(), 1);
+        if broken {
+            assert!(!outside.exists());
+        } else {
+            assert_eq!(fs::read_to_string(outside).unwrap(), "keep");
+        }
     }
 }
 

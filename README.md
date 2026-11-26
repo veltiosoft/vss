@@ -62,11 +62,19 @@ installed at `./path/to/skills/vss/SKILL.md`. Missing parent directories are
 created. Relative paths are resolved from the current working directory;
 absolute paths and quoted paths containing spaces are also supported.
 
-An existing `vss` entry (even an empty directory, file, or symbolic link) causes
-an error; nothing is overwritten. Other skills in the parent directory are left
-unchanged. Success prints the absolute path of the installed file. Failures
-report the cause and return a nonzero exit status; newly created directories or
-partial files may remain after an I/O failure.
+By default, an existing `vss` entry (even an empty directory) causes an error.
+To reinstall the bundled skill, explicitly allow replacement:
+
+```sh
+vss skill install --dir ./path/to/skills --force
+```
+
+`--force` replaces only `vss/SKILL.md` and leaves other files unchanged.
+Back up any customizations to `SKILL.md` before replacing it.
+The command rejects symbolic links at `vss` or `vss/SKILL.md`, even with `--force`.
+
+Success prints the absolute path of the installed file. Failures report the
+cause and return a nonzero exit status.
 
 This command works outside a site without `vss.toml`. It does not select an
 Agent-specific destination, edit Agent configuration, or download external
