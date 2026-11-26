@@ -15,6 +15,7 @@
 
 - [ADD] `vss skill install --force` で既存の `vss/SKILL.md` を同梱版に置き換えられるようにする
   - `--force` を指定しない場合は引き続き上書きしない。他のファイルは変更せず、配置先のシンボリックリンクは拒否する。
+- [FIX] 依存関係 `cookie` を `0.18.3` に更新し、[RUSTSEC-2026-0594](https://rustsec.org/advisories/RUSTSEC-2026-0594) に対応する
 
 ## v2026.11.1
 
