@@ -11,6 +11,8 @@
 
 ## main
 
+## v2026.11.3
+
 - [UPDATE] `futures-util`、`hyper`、`ramhorns` を更新し、メンテナンスが終了した `pin-utils` と `proc-macro-error` への依存を解消する
   - GitHub Releases のリリースノートと配布アーカイブに、MPL-2.0 の `ramhorns` 系クレートのソース入手先を記載する。
 
