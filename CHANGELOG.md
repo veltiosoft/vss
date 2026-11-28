@@ -11,6 +11,9 @@
 
 ## main
 
+- [UPDATE] `futures-util`、`hyper`、`ramhorns` を更新し、メンテナンスが終了した `pin-utils` と `proc-macro-error` への依存を解消する
+  - GitHub Releases のリリースノートと配布アーカイブに、MPL-2.0 の `ramhorns` 系クレートのソース入手先を記載する。
+
 ## v2026.11.2
 
 - [ADD] `vss skill install --force` で既存の `vss/SKILL.md` を同梱版に置き換えられるようにする

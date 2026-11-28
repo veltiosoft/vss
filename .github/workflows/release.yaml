@@ -46,6 +46,7 @@ jobs:
           gh release create "$VERSION" \
             --title "$VERSION" \
             --draft \
+            --notes-file THIRD_PARTY_NOTICES.md \
             --generate-notes
 
   build:
@@ -110,7 +111,7 @@ jobs:
 
       - name: Build
         shell: bash
-        run: cargo build --release --target ${{ matrix.platform.target }}
+        run: cargo build --locked --release --target ${{ matrix.platform.target }}
         env:
           VSS_COMMIT: ${{ steps.get_commit.outputs.commit }}
 
@@ -129,21 +130,21 @@ jobs:
           mkdir -p dist
           cp target/${{ matrix.platform.target }}/release/vss.exe dist/
 
+      - name: Copy license and third-party notices
+        shell: bash
+        run: cp LICENSE THIRD_PARTY_NOTICES.md dist/
+
       - name: Create tar.gz archive
         if: matrix.platform.archive_ext == 'tar.gz'
         shell: bash
-        run: |
-          cd dist
-          tar czf ../vss_${{ matrix.platform.os_name }}_${{ matrix.platform.arch_name }}.tar.gz vss
-          cd ..
+        working-directory: dist
+        run: tar czf "../$ARCHIVE" vss LICENSE THIRD_PARTY_NOTICES.md
 
       - name: Create zip archive
         if: matrix.platform.archive_ext == 'zip'
         shell: bash
-        run: |
-          cd dist
-          7z a ../vss_${{ matrix.platform.os_name }}_${{ matrix.platform.arch_name }}.zip vss.exe
-          cd ..
+        working-directory: dist
+        run: 7z a "../$ARCHIVE" vss.exe LICENSE THIRD_PARTY_NOTICES.md
 
       - name: Generate checksum
         shell: bash

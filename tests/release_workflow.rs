@@ -23,6 +23,28 @@ fn workflow() -> Workflow {
 }
 
 #[test]
+fn ramhorns_source_notices_match_release_lockfile() {
+    let notices = include_str!("../THIRD_PARTY_NOTICES.md");
+    let lock: toml::Value = toml::from_str(include_str!("../Cargo.lock")).unwrap();
+    let packages = lock["package"].as_array().unwrap();
+    for name in ["ramhorns", "ramhorns-derive"] {
+        let mut matches = packages
+            .iter()
+            .filter(|package| package["name"].as_str() == Some(name))
+            .peekable();
+        assert!(matches.peek().is_some(), "missing {name} in Cargo.lock");
+        for package in matches {
+            let version = package["version"].as_str().unwrap();
+            let url = format!("https://static.crates.io/crates/{name}/{name}-{version}.crate");
+            assert!(
+                notices.contains(&url),
+                "missing source URL for {name} {version}"
+            );
+        }
+    }
+}
+
+#[test]
 fn release_actions_are_pinned_and_permissions_are_scoped() {
     let workflow = workflow();
     assert_eq!(

@@ -19,6 +19,12 @@ for example, `2026.10.0` is the first release of October 2026, and the final num
 counts releases within that month. Segments are unpadded, so every version is also
 a valid SemVer string.
 
+## License
+
+vss is licensed under the [Apache License, Version 2.0](LICENSE).
+See [third-party notices](THIRD_PARTY_NOTICES.md) for the license and source
+code of the MPL-2.0 dependencies included in vss releases.
+
 ## Create a site
 
 ```sh
